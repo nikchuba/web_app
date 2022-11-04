@@ -13,6 +13,7 @@ dependencies:
   # flutter_gl: ^0.0.21
   # flutter_unity_widget: ^2022.2.0
   ditredi: ^1.0.3
+  equatable: ^2.0.5
 
   cupertino_icons: ^1.0.2
 

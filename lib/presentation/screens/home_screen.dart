@@ -1,19 +1,28 @@
 import 'dart:math';
 
+import 'package:ditredi/ditredi.dart';
+import 'package:vector_math/vector_math_64.dart' as math;
 import 'package:flutter/material.dart';
+import 'package:web_app/domain/models/model3d_item.dart';
+import 'package:web_app/domain/models/model3d_item_controller.dart';
+import 'package:web_app/presentation/widgets/cube_3d.dart' as my;
+import 'package:web_app/presentation/widgets/truck_trailer.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({Key? key}) : super(key: key);
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   // late Size screenSize;
   late Offset offset;
   late double zoom;
   late double sceneSize;
+  late Model3DItemController cubeController;
+  late Model3DItemController truckController;
+  final GlobalKey<HomeScreenState> key = GlobalKey();
 
   @override
   void didChangeDependencies() {
@@ -23,6 +32,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void initState() {
+    cubeController = Model3DItemController(
+      const Model3DItem(offset: Offset(0, 0)),
+    );
+    truckController = Model3DItemController(
+      const Model3DItem(offset: Offset(300, 400)),
+    );
     offset = const Offset(0, -1.2);
     zoom = 1;
     super.initState();
@@ -33,17 +48,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.black12,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onPanUpdate: (details) {
-              final dx = offset.dx + details.delta.dx / 500;
-              final dy = offset.dy + details.delta.dy / 500;
-              if (dy <= -1.5 || dy >= -0.2) return;
-              setState(() => offset = Offset(dx, dy));
-            },
-            child: Center(
+          Center(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanUpdate: (details) {
+                print(offset);
+                final dx = offset.dx + details.delta.dx / 500;
+                final dy = offset.dy + details.delta.dy / 500;
+                if (dy <= -1.5 || dy >= -0.2) return;
+                setState(() => offset = Offset(dx, dy));
+              },
               child: Transform(
+                transformHitTests: true,
                 transform: Matrix4.identity()
                   ..setEntry(3, 2, 0.001)
                   ..scale(zoom, zoom, zoom)
@@ -62,10 +80,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      CustomPaint(
-                        painter: GridPainter(),
+                      // CustomPaint(
+                      //   painter: GridPainter(),
+                      // ),
+                      TruckTrailer(
+                        controller: truckController,
                       ),
-                      Trailer(),
+                      my.Cube3D(
+                        controller: cubeController,
+                        size: 5,
+                        // offset: Offset(100, 0),
+                      ),
                     ],
                   ),
                 ),
@@ -80,78 +105,6 @@ class _HomeScreenState extends State<HomeScreen> {
               child: ZoomButtons(
                 zoomIn: () => setState(() => zoom += 0.1),
                 zoomOut: () => setState(() => zoom -= 0.1),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class Trailer extends StatelessWidget {
-  const Trailer({
-    super.key,
-    double width = 2,
-    double height = 2.5,
-    double length = 6,
-  })  : _width = width * 50,
-        _height = height * 50,
-        _length = length * 50;
-
-  final double _width;
-  final double _height;
-  final double _length;
-
-  static const border = Border(
-    top: BorderSide(),
-    bottom: BorderSide(),
-    left: BorderSide(),
-    right: BorderSide(),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: 200,
-      left: 200,
-      width: _width,
-      height: _length,
-      child: Stack(
-        children: [
-          Container(
-            width: _width,
-            height: _length,
-            decoration: const BoxDecoration(
-              color: Colors.amber,
-              border: border,
-            ),
-          ),
-          Positioned(
-            top: 0,
-            child: Container(
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.001)
-                ..setRotationX(-pi / 2),
-              width: _width,
-              height: _height,
-              decoration: const BoxDecoration(
-                color: Colors.amber,
-                border: border,
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 0,
-            child: Container(
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.001)
-                ..setRotationX(-pi / 2),
-              width: _width,
-              height: _height,
-              decoration: const BoxDecoration(
-                color: Colors.amber,
-                border: border,
               ),
             ),
           ),
