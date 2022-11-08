@@ -1,200 +1,422 @@
+import 'dart:async';
 import 'dart:math';
 
-import 'package:ditredi/ditredi.dart';
-import 'package:vector_math/vector_math_64.dart' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:web_app/domain/models/model3d_item.dart';
-import 'package:web_app/domain/models/model3d_item_controller.dart';
-import 'package:web_app/presentation/widgets/cube_3d.dart' as my;
-import 'package:web_app/presentation/widgets/truck_trailer.dart';
+import 'package:flutter_gl/flutter_gl.dart';
+import 'package:three_dart_jsm/three_dart_jsm.dart' as three_jsm;
+import 'package:three_dart/three_dart.dart' as three;
+import 'package:web_app/presentation/widgets/zoom_buttons.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
   @override
-  State<HomeScreen> createState() => HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen> {
-  // late Size screenSize;
-  late Offset offset;
-  late double zoom;
-  late double sceneSize;
-  late Model3DItemController cubeController;
-  late Model3DItemController truckController;
-  final GlobalKey<HomeScreenState> key = GlobalKey();
+class _HomeScreenState extends State<HomeScreen> {
+  final truckSize = three.Vector3(2.43, 12.19, 2.59);
+  late FlutterGlPlugin three3dRender;
+  three.WebGLRenderer? renderer;
+  late three.TextureLoader loader;
 
-  @override
-  void didChangeDependencies() {
-    sceneSize = MediaQuery.of(context).size.width - 200;
-    super.didChangeDependencies();
+  late double width;
+  late double height;
+
+  Size? screenSize;
+
+  late three.Scene scene;
+  late three.Camera camera;
+  late three.Object3D container;
+
+  double devicePixelRatio = 1.0;
+
+  var amount = 4;
+
+  bool verbose = true;
+  bool disposed = false;
+
+  late three.Object3D object;
+
+  // late three.Texture texture;
+
+  late three.WebGLRenderTarget renderTarget;
+
+  dynamic sourceTexture;
+
+  bool loaded = false;
+
+  int counter = 0;
+  double fontHeight = 20, size = 70, hover = 30, curveSegments = 4, bevelThickness = 2, bevelSize = 1.5;
+
+  final GlobalKey<three_jsm.DomLikeListenableState> globalKey = GlobalKey<three_jsm.DomLikeListenableState>();
+  late three_jsm.OrbitControls controls;
+
+  // Platform messages are asynchronous, so we initialize in an async method.
+  Future<void> initPlatformState() async {
+    width = screenSize!.width;
+    height = screenSize!.height;
+
+    three3dRender = FlutterGlPlugin();
+
+    Map<String, dynamic> options = {
+      "antialias": true,
+      "alpha": false,
+      "width": width.toInt(),
+      "height": height.toInt(),
+      "dpr": devicePixelRatio,
+    };
+
+    // print("three3dRender.initialize _options: $options ");
+
+    await three3dRender.initialize(options: options);
+    loader = three.TextureLoader(null);
+
+    // print("three3dRender.initialize three3dRender: ${three3dRender.textureId} ");
+
+    setState(() {});
+
+    // Wait for web
+    Future.delayed(const Duration(milliseconds: 200), () async {
+      await three3dRender.prepareContext();
+
+      initScene();
+    });
   }
 
-  @override
-  void initState() {
-    cubeController = Model3DItemController(
-      const Model3DItem(offset: Offset(0, 0)),
-    );
-    truckController = Model3DItemController(
-      const Model3DItem(offset: Offset(300, 400)),
-    );
-    offset = const Offset(0, -1.2);
-    zoom = 1;
-    super.initState();
+  initSize(BuildContext context) {
+    if (screenSize != null) {
+      return;
+    }
+
+    final mqd = MediaQuery.of(context);
+
+    screenSize = mqd.size;
+    devicePixelRatio = mqd.devicePixelRatio;
+
+    initPlatformState();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black12,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          Center(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onPanUpdate: (details) {
-                print(offset);
-                final dx = offset.dx + details.delta.dx / 500;
-                final dy = offset.dy + details.delta.dy / 500;
-                if (dy <= -1.5 || dy >= -0.2) return;
-                setState(() => offset = Offset(dx, dy));
-              },
-              child: Transform(
-                transformHitTests: true,
-                transform: Matrix4.identity()
-                  ..setEntry(3, 2, 0.001)
-                  ..scale(zoom, zoom, zoom)
-                  ..rotateX(offset.dy)
-                  ..rotateZ(-offset.dx),
-                origin: Offset(sceneSize / 2, sceneSize / 2),
-                child: Container(
-                  // clipBehavior: Clip.hardEdge,
-                  width: sceneSize,
-                  height: sceneSize,
-                  decoration: const BoxDecoration(
-                    color: Colors.green,
-                    // shape: BoxShape.circle,
-                    // image: DecorationImage(image: AssetImage('assets/truck_trailer.jpg')),
-                  ),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // CustomPaint(
-                      //   painter: GridPainter(),
-                      // ),
-                      TruckTrailer(
-                        controller: truckController,
-                      ),
-                      my.Cube3D(
-                        controller: cubeController,
-                        size: 5,
-                        // offset: Offset(100, 0),
-                      ),
-                    ],
-                  ),
+      body: Builder(
+        builder: (BuildContext context) {
+          initSize(context);
+          return SingleChildScrollView(child: _build(context));
+        },
+      ),
+    );
+  }
+
+  Widget _build(BuildContext context) {
+    return Column(
+      children: [
+        Stack(
+          children: [
+            three_jsm.DomLikeListenable(
+              key: globalKey,
+              builder: (context) => Container(
+                width: width,
+                height: height,
+                color: Colors.grey.shade100,
+                child: Builder(
+                  builder: (BuildContext context) {
+                    if (kIsWeb) {
+                      return three3dRender.isInitialized
+                          ? HtmlElementView(viewType: three3dRender.textureId!.toString())
+                          : const Center(child: CircularProgressIndicator());
+                    } else {
+                      return three3dRender.isInitialized
+                          ? Texture(textureId: three3dRender.textureId!)
+                          : Container(color: Colors.red);
+                    }
+                  },
                 ),
               ),
             ),
-          ),
-          Positioned(
-            right: 20,
-            top: MediaQuery.of(context).size.height / 2 - 50,
-            bottom: MediaQuery.of(context).size.height / 2 - 50,
-            child: IntrinsicHeight(
-              child: ZoomButtons(
-                zoomIn: () => setState(() => zoom += 0.1),
-                zoomOut: () => setState(() => zoom -= 0.1),
+            Positioned(
+              top: 0,
+              bottom: 0,
+              right: 20,
+              child: Center(
+                child: ZoomButtons(
+                  zoomIn: () => controls
+                    ..dollyIn(0.9)
+                    ..update(),
+                  zoomOut: () => controls
+                    ..dollyIn(1.1)
+                    ..update(),
+                ),
               ),
-            ),
-          ),
-        ],
-      ),
+            )
+          ],
+        ),
+      ],
     );
   }
-}
 
-class ZoomButtons extends StatelessWidget {
-  final VoidCallback? zoomIn, zoomOut;
-  const ZoomButtons({
-    Key? key,
-    this.zoomIn,
-    this.zoomOut,
-  }) : super(key: key);
+  render() {
+    final gl = three3dRender.gl;
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      clipBehavior: Clip.hardEdge,
-      width: 50,
-      height: 100,
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(100)),
-      child: Column(
-        children: [
-          Expanded(
-            child: TextButton(
-              onPressed: zoomIn,
-              child: const Icon(Icons.add),
-            ),
-          ),
-          Expanded(
-            child: TextButton(
-              onPressed: zoomOut,
-              child: const Icon(Icons.remove),
-            ),
-          ),
-        ],
-      ),
+    renderer!.render(scene, camera);
+
+    gl.finish();
+
+    if (!kIsWeb) {
+      three3dRender.updateTexture(sourceTexture);
+    }
+  }
+
+  initRenderer() {
+    Map<String, dynamic> options = {
+      "width": width,
+      "height": height,
+      "gl": three3dRender.gl,
+      "antialias": true,
+      "canvas": three3dRender.element,
+      "alpha": true,
+    };
+
+    // print('initRenderer  dpr: $dpr _options: $options');
+
+    renderer = three.WebGLRenderer(options);
+    renderer!.setPixelRatio(devicePixelRatio);
+    renderer!.setSize(width, height, true);
+    renderer!.shadowMap.enabled = true;
+    renderer!.setClearColor(three.Color.fromHex(0xEEEEEE), 1.0);
+
+    if (!kIsWeb) {
+      var pars = three.WebGLRenderTargetOptions({"format": three.RGBAFormat});
+      renderTarget =
+          three.WebGLRenderTarget((width * devicePixelRatio).toInt(), (height * devicePixelRatio).toInt(), pars);
+      renderTarget.samples = 4;
+      renderer!.setRenderTarget(renderTarget);
+
+      sourceTexture = renderer!.getRenderTargetGLTexture(renderTarget);
+    }
+  }
+
+  void initScene() async {
+    initRenderer();
+    initPage();
+  }
+
+  void initPage() async {
+    final aspectRatio = width / height;
+
+    camera = three.PerspectiveCamera(45, aspectRatio, 0.1, 1000);
+
+    scene = three.Scene();
+    scene.background = three.Color.setRGB255(255, 255, 255);
+    scene.rotateX(-three.Math.PI / 2);
+    camera
+      ..position.set(45, 30, 60)
+      ..lookAt(scene.position);
+
+    controls = three_jsm.OrbitControls(camera, globalKey)
+      ..maxPolarAngle = three.Math.PI / 2.2
+      ..maxDistance = 60
+      ..minDistance = 15
+      ..enableZoom = true
+      ..dollyIn(0.3)
+      ..update();
+
+    final ground = await create3DObject(
+      width: 100,
+      length: 100,
+      asset: 'assets/grass.png',
+      textureRepeat: true,
+      countRepeat: 50,
     );
-  }
-}
+    final box1 = await create3DObject(
+      width: 2,
+      length: 2,
+      height: 2,
+      position: three.Vector2(10, 0),
+      color: Colors.amber,
+    );
+    final box2 = await create3DObject(
+      width: 1.5,
+      length: 1.5,
+      height: 1.5,
+      position: three.Vector2(9, 2),
+      color: Colors.amber,
+    );
+    container = await create3DObject(
+      width: truckSize.x,
+      length: truckSize.y,
+      height: truckSize.z,
+      asset: 'assets/truck_container.jpg',
+    );
 
-class GridPainter extends CustomPainter {
-  final double lineWidth;
-  final double cellSize;
-  GridPainter({
-    this.lineWidth = 1,
-    this.cellSize = 20,
-  });
+    var pointsLH = [
+      three.Vector3(truckSize.x, -truckSize.y / 2, 0),
+      three.Vector3(truckSize.x, truckSize.y / 2, 0),
+      three.Vector3(truckSize.x, truckSize.y / 2, truckSize.z),
+    ];
+    var pointsW = [
+      three.Vector3(-truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 2, 0),
+      three.Vector3(truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 2, 0),
+    ];
+    var geometryLH = three.BufferGeometry().setFromPoints(pointsLH);
+    var arrowLH = three.Line(
+      geometryLH,
+      three.LineBasicMaterial()..color = three.Color.setRGB255(0, 0, 0),
+    );
+    var geometryW = three.BufferGeometry().setFromPoints(pointsW);
+    var arrowW = three.Line(
+      geometryW,
+      three.LineBasicMaterial()..color = three.Color.setRGB255(0, 0, 0),
+    );
+    var text1 = await createText(
+      '${truckSize.x * 1000}',
+      three.Vector3(truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 1.5, 0),
+    );
+    var text2 = await createText(
+      '${truckSize.y * 1000}',
+      three.Vector3(truckSize.x * 1.2, -truckSize.y / 2, 0),
+      three.Vector3(0, 0, pi / 2),
+    );
+    var text3 = await createText(
+      '${truckSize.z * 1000}',
+      three.Vector3(truckSize.x, truckSize.y / 2, truckSize.z),
+      three.Vector3(pi / 2, pi / 4),
+    );
+
+    scene.addAll([text1, text2, text3]);
+    scene.addAll([ground, container, box1, box2, arrowLH, arrowW]);
+
+    var light = three.PointLight(three.Color.setRGB255(255, 255, 255), 1)
+      ..position.z = 30
+      ..position.x = 30
+      ..position.y = 30
+      ..castShadow = true;
+
+    scene.addAll([light, three.AmbientLight(three.Color(0xffffff), 0.3)]);
+
+    // var raycaster = three.Raycaster();
+    // renderer?.domElement.addEventListener(
+    //   'mousedown',
+    //   (event) {
+    //     final vector = three.Vector2(
+    //       -(width / 2 - event.offset.x) * 2 / width,
+    //       (height / 2 - event.offset.y) * 2 / height,
+    //     );
+    //     raycaster.setFromCamera(vector, camera);
+    //     var intersects = raycaster.intersectObject(ground, false);
+    //     if (intersects.isNotEmpty) {
+    //       // cube
+    //       //   ..rotateX(pi / 4)
+    //       //   ..rotateY(pi / 4);
+    //       counter += 1;
+    //       print(intersects.length);
+    //       print(intersects[0].object.id);
+    //       setState(() {});
+    //     }
+    //     // print('Z: ${vector.z}');
+    //   },
+    //   true,
+    // );
+
+    loaded = true;
+    animate();
+  }
+
+  Future<three.Font> loadFont() async {
+    var loader = three_jsm.TYPRLoader(null);
+    var fontJson = await loader.loadAsync("assets/fonts/Figerona-VF.ttf");
+    return three.TYPRFont(fontJson);
+  }
+
+  Future<three.Object3D> createText(String text, three.Vector3 position, [three.Vector3? rotation]) async {
+    var font = await loadFont();
+    var textGeo = three.TextGeometry(
+      text,
+      {"font": font, "size": 0.25, "height": 0.001},
+    );
+
+    var material = three.MeshBasicMaterial({"color": 0x000000});
+
+    var textMesh = three.Mesh(textGeo, material);
+
+    textMesh.position
+      ..x = position.x
+      ..y = position.y
+      ..z = position.z;
+    textMesh.rotation
+      ..x = rotation?.x ?? 0
+      ..y = rotation?.y ?? 0
+      ..z = rotation?.z ?? 0;
+    return textMesh;
+  }
+
+  Future<three.Object3D> create3DObject({
+    required double width,
+    required double length,
+    three.Vector2? position,
+    double? height,
+    Color? color,
+    String? asset,
+    bool textureRepeat = false,
+    int? countRepeat,
+  }) async {
+    final texture = asset != null ? (await loader.loadAsync(asset)) : null;
+    if (asset != null && textureRepeat == true) {
+      texture!
+        ..wrapS = three.RepeatWrapping
+        ..wrapT = three.RepeatWrapping
+        ..repeat.set((countRepeat ?? 10).toDouble(), (countRepeat ?? 10).toDouble());
+    }
+
+    final three.BufferGeometry geometry =
+        height == null ? three.PlaneGeometry(width, length) : three.BoxGeometry(width, length, height);
+    return three.Mesh(
+      geometry,
+      three.MeshPhongMaterial()
+        ..color = three.Color.setRGB255(
+          color?.red ?? 255,
+          color?.green ?? 255,
+          color?.blue ?? 255,
+        )
+        ..map = texture,
+    )
+      ..position.x = position?.x ?? 0
+      ..position.y = position?.y ?? 0
+      ..position.z = ((height ?? 0) / 2)
+      ..castShadow = true
+      ..receiveShadow = true;
+  }
+
+  animate() {
+    if (!mounted || disposed) {
+      return;
+    }
+
+    if (!loaded) {
+      return;
+    }
+
+    // cube.position.x += 0.1;
+    // cube.position.z += 0.05;
+    // scene.rotation.z += 0.05;
+    // camera..zoom += 0.01..updateProjectionMatrix();
+
+    render();
+
+    Future.delayed(const Duration(milliseconds: 15), () {
+      animate();
+    });
+  }
 
   @override
-  void paint(Canvas canvas, Size size) {
-    Paint paint = Paint()
-      ..color = Colors.black
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = lineWidth;
+  void dispose() {
+    print(" dispose ............. ");
 
-    Path path = Path();
-    path.lineTo(size.width, 0);
-    path.lineTo(size.width, size.height);
-    path.lineTo(0, size.height);
-    path.lineTo(0, 0);
-    for (double i = 1; i < size.height / cellSize; i++) {
-      final height = i * cellSize;
-      if (i % 2 == 0) {
-        path
-          ..moveTo(size.width, height)
-          ..lineTo(0, height);
-      }
-      path
-        ..moveTo(0, height)
-        ..lineTo(size.width, height);
-    }
-    for (double i = 1; i < size.width / cellSize; i++) {
-      final width = i * cellSize;
-      if (i % 2 == 0) {
-        path
-          ..moveTo(width, 0)
-          ..lineTo(width, size.height);
-      }
-      path
-        ..moveTo(width, size.height)
-        ..lineTo(width, 0);
-    }
+    disposed = true;
+    three3dRender.dispose();
 
-    canvas.drawPath(path, paint);
+    super.dispose();
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
