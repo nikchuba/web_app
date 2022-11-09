@@ -218,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> {
     controls = three_jsm.OrbitControls(camera, globalKey)
       ..maxPolarAngle = three.Math.PI / 2.2
       ..maxDistance = 60
-      ..minDistance = 15
+      ..minDistance = 5
       ..enableZoom = true
       ..dollyIn(0.3)
       ..update();
@@ -228,28 +228,61 @@ class _HomeScreenState extends State<HomeScreen> {
       length: 100,
       asset: 'assets/grass.png',
       textureRepeat: true,
-      countRepeat: 50,
+      countRepeat: 25,
     );
     final box1 = await create3DObject(
       width: 2,
       length: 2,
       height: 2,
-      position: three.Vector2(10, 0),
+      position: three.Vector3(10, 0, 0),
       color: Colors.amber,
+      castShadow: true,
     );
     final box2 = await create3DObject(
       width: 1.5,
       length: 1.5,
       height: 1.5,
-      position: three.Vector2(9, 2),
-      color: Colors.amber,
+      position: three.Vector3(9, 2, 0),
+      color: Colors.redAccent,
+      castShadow: true,
     );
-    container = await create3DObject(
-      width: truckSize.x,
-      length: truckSize.y,
-      height: truckSize.z,
+    var containerBottom = await create3DObject(
+      width: truckSize.y,
+      length: truckSize.x,
+      height: 0.01,
+      rotation: three.Vector3(0, 0, pi / 2),
       asset: 'assets/truck_container.jpg',
     );
+    var containerFront = await create3DObject(
+      width: truckSize.x,
+      length: truckSize.z,
+      position: three.Vector3(0, truckSize.y / 2, truckSize.z / 2),
+      rotation: three.Vector3(pi / 2, 0, 0),
+      asset: 'assets/truck_container.jpg',
+    );
+    var containerRight = await create3DObject(
+      width: truckSize.y,
+      length: truckSize.z,
+      position: three.Vector3(truckSize.x / 2, 0, truckSize.z / 2),
+      rotation: three.Vector3(pi / 2, -pi / 2, 0),
+      asset: 'assets/truck_container.jpg',
+    );
+    var containerLeft = await create3DObject(
+      width: truckSize.y,
+      length: truckSize.z,
+      position: three.Vector3(-truckSize.x / 2, 0, truckSize.z / 2),
+      rotation: three.Vector3(pi / 2, pi / 2, 0),
+      asset: 'assets/truck_container.jpg',
+    );
+    var containerBack = await create3DObject(
+      width: truckSize.x,
+      length: truckSize.z,
+      position: three.Vector3(0, -truckSize.y / 2, truckSize.z / 2),
+      rotation: three.Vector3(pi / 2, pi, 0),
+      asset: 'assets/truck_container.jpg',
+    );
+
+    scene.addAll([containerBottom, containerRight, containerLeft, containerFront, containerBack]);
 
     var pointsLH = [
       three.Vector3(truckSize.x, -truckSize.y / 2, 0),
@@ -270,23 +303,32 @@ class _HomeScreenState extends State<HomeScreen> {
       geometryW,
       three.LineBasicMaterial()..color = three.Color.setRGB255(0, 0, 0),
     );
-    var text1 = await createText(
+    var textWidth = await createText(
       '${truckSize.x * 1000}',
       three.Vector3(truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 1.5, 0),
     );
-    var text2 = await createText(
+    var textLength = await createText(
       '${truckSize.y * 1000}',
       three.Vector3(truckSize.x * 1.2, -truckSize.y / 2, 0),
       three.Vector3(0, 0, pi / 2),
     );
-    var text3 = await createText(
+    var textHeight = await createText(
       '${truckSize.z * 1000}',
       three.Vector3(truckSize.x, truckSize.y / 2, truckSize.z),
       three.Vector3(pi / 2, pi / 4),
     );
+    var textZeroLH = await createText(
+      '0',
+      three.Vector3(truckSize.x * 1.2, truckSize.y / 2 - 0.2, 0),
+      three.Vector3(0, 0, pi / 2),
+    );
+    var textZeroW = await createText(
+      '0',
+      three.Vector3(-truckSize.x / 2 - 0.2, -truckSize.y / 2 - truckSize.x / 1.5, 0),
+    );
 
-    scene.addAll([text1, text2, text3]);
-    scene.addAll([ground, container, box1, box2, arrowLH, arrowW]);
+    scene.addAll([textWidth, textLength, textHeight, textZeroLH, textZeroW]);
+    scene.addAll([ground, box1, box2, arrowLH, arrowW]);
 
     var light = three.PointLight(three.Color.setRGB255(255, 255, 255), 1)
       ..position.z = 30
@@ -326,7 +368,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<three.Font> loadFont() async {
     var loader = three_jsm.TYPRLoader(null);
-    var fontJson = await loader.loadAsync("assets/fonts/Figerona-VF.ttf");
+    var fontJson = await loader.loadAsync("${kIsWeb ? '/' : ''}assets/fonts/Figerona-VF.ttf");
     return three.TYPRFont(fontJson);
   }
 
@@ -355,12 +397,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<three.Object3D> create3DObject({
     required double width,
     required double length,
-    three.Vector2? position,
+    three.Vector3? position,
+    three.Vector3? rotation,
     double? height,
     Color? color,
     String? asset,
     bool textureRepeat = false,
     int? countRepeat,
+    bool castShadow = false,
   }) async {
     final texture = asset != null ? (await loader.loadAsync(asset)) : null;
     if (asset != null && textureRepeat == true) {
@@ -369,24 +413,27 @@ class _HomeScreenState extends State<HomeScreen> {
         ..wrapT = three.RepeatWrapping
         ..repeat.set((countRepeat ?? 10).toDouble(), (countRepeat ?? 10).toDouble());
     }
+    final params = {
+      "color": three.Color.setRGB255(
+        color?.red ?? 255,
+        color?.green ?? 255,
+        color?.blue ?? 255,
+      ),
+      "map": texture
+    };
 
     final three.BufferGeometry geometry =
         height == null ? three.PlaneGeometry(width, length) : three.BoxGeometry(width, length, height);
     return three.Mesh(
       geometry,
-      three.MeshPhongMaterial()
-        ..color = three.Color.setRGB255(
-          color?.red ?? 255,
-          color?.green ?? 255,
-          color?.blue ?? 255,
-        )
-        ..map = texture,
+      castShadow ? three.MeshPhongMaterial(params) : three.MeshBasicMaterial(params),
     )
+      ..rotation.x = rotation?.x ?? 0
+      ..rotation.y = rotation?.y ?? 0
+      ..rotation.z = rotation?.z ?? 0
       ..position.x = position?.x ?? 0
       ..position.y = position?.y ?? 0
-      ..position.z = ((height ?? 0) / 2)
-      ..castShadow = true
-      ..receiveShadow = true;
+      ..position.z = (position?.z ?? 0) + ((height ?? 0) / 2);
   }
 
   animate() {
