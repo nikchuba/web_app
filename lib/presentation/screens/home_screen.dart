@@ -36,7 +36,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool disposed = false;
 
   late three.Object3D ground;
-  late three.Object3D draggableObject;
+  late List<three.Object3D> boxes;
+  late three.Object3D targetObject;
+  late three.Object3D draggableProjection;
 
   late three.Texture groundTexture, containerTexture;
 
@@ -349,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.cyan,
           castShadow: true,
         );
-    var boxes = [box1, box2, box3, box4];
+    boxes = [box1, box2, box3, box4];
 
     var light = three.PointLight(three.Color.setRGB255(255, 255, 255), 1)
           ..position.z = 30
@@ -373,9 +375,9 @@ class _HomeScreenState extends State<HomeScreen> {
         (event) {
           final vector = pointToVector2(event);
           raycaster.setFromCamera(vector, camera);
-          var intersects = raycaster.intersectObjects(boxes, false);
+          var intersects = raycaster.intersectObjects(boxes, true);
           if (intersects.isNotEmpty) {
-            draggableObject = intersects.first.object;
+            targetObject = intersects.first.object;
             controls
               ..enabled = false
               ..domElement.addEventListener('pointermove', dragObject);
@@ -401,8 +403,26 @@ class _HomeScreenState extends State<HomeScreen> {
     var intersects = raycaster.intersectObject(ground, false);
     if (intersects.isNotEmpty) {
       var point = intersects.first.point;
-      draggableObject.position.set(point.x, -point.z);
+      draggableProjection = targetObject.clone()
+        ..position.set(point.x, -point.z, targetObject.position.z)
+        ..name = 'boundingbox';
+      scene.add(draggableProjection..visible = false);
+      if (!intersectObjMas(draggableProjection, [...boxes]..remove(targetObject))) {
+        targetObject.position.set(point.x, -point.z);
+      }
     }
+  }
+
+  bool intersectObjMas(three.Object3D target, List<three.Object3D> objects) {
+    final box = three.Box3().setFromObject(target);
+    for (var item in objects) {
+      final anotherBox = three.Box3().setFromObject(item);
+      if (box.intersectsBox(anotherBox)) {
+        scene.remove(scene.getObjectByName('boundingbox')!);
+        return true;
+      }
+    }
+    return false;
   }
 
   three.Vector2 pointToVector2(three_jsm.WebPointerEvent point) {
@@ -469,14 +489,15 @@ class _HomeScreenState extends State<HomeScreen> {
         height == null ? three.PlaneGeometry(width, length) : three.BoxGeometry(width, length, height);
     return three.Mesh(
       geometry,
-      castShadow ? three.MeshLambertMaterial(params) : three.MeshBasicMaterial(params),
+      castShadow ? three.MeshPhongMaterial(params) : three.MeshBasicMaterial(params),
     )
       ..rotation.x = rotation?.x ?? 0
       ..rotation.y = rotation?.y ?? 0
       ..rotation.z = rotation?.z ?? 0
       ..position.x = position?.x ?? 0
       ..position.y = position?.y ?? 0
-      ..position.z = (position?.z ?? 0) + ((height ?? 0) / 2);
+      ..position.z = (position?.z ?? 0) + ((height ?? 0) / 2)
+      ..autoUpdate;
   }
 
   animate() {
