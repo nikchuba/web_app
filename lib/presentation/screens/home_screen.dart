@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:html';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -20,16 +19,14 @@ class _HomeScreenState extends State<HomeScreen> {
   final truckSize = three.Vector3(2.43, 12.19, 2.59);
   late FlutterGlPlugin three3dRender;
   three.WebGLRenderer? renderer;
-  late three.TextureLoader loader;
+  late three.Loader textureLoader, textLoader;
 
-  late double width;
-  late double height;
+  late double width, height;
 
   Size? screenSize;
 
   late three.Scene scene;
   late three.Camera camera;
-  late three.Object3D container;
 
   double devicePixelRatio = 1.0;
 
@@ -41,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late three.Object3D ground;
   late three.Object3D draggableObject;
 
-  // late three.Texture texture;
+  late three.Texture groundTexture, containerTexture;
 
   late three.WebGLRenderTarget renderTarget;
 
@@ -52,9 +49,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int counter = 0;
   double fontHeight = 20, size = 70, hover = 30, curveSegments = 4, bevelThickness = 2, bevelSize = 1.5;
 
-  final GlobalKey<three_jsm.DomLikeListenableState> globalKey = GlobalKey<three_jsm.DomLikeListenableState>();
+  final globalKey = GlobalKey<three_jsm.DomLikeListenableState>();
   late three_jsm.OrbitControls controls;
   late three.Raycaster raycaster;
+  late three.Font textFont;
 
   // Platform messages are asynchronous, so we initialize in an async method.
   Future<void> initPlatformState() async {
@@ -74,7 +72,13 @@ class _HomeScreenState extends State<HomeScreen> {
     // print("three3dRender.initialize _options: $options ");
 
     await three3dRender.initialize(options: options);
-    loader = three.TextureLoader(null);
+    textureLoader = three.TextureLoader(null);
+    textLoader = three_jsm.TYPRLoader(null);
+
+    groundTexture = await textureLoader.loadAsync('assets/grass.png');
+    containerTexture = await textureLoader.loadAsync('assets/truck_container.jpg');
+
+    textFont = await loadFont();
 
     // print("three3dRender.initialize three3dRender: ${three3dRender.textureId} ");
 
@@ -88,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  initSize(BuildContext context) {
+  Future<void> initSize(BuildContext context) async {
     if (screenSize != null) {
       return;
     }
@@ -98,65 +102,59 @@ class _HomeScreenState extends State<HomeScreen> {
     screenSize = mqd.size;
     devicePixelRatio = mqd.devicePixelRatio;
 
-    initPlatformState();
+    await initPlatformState();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Builder(
-        builder: (BuildContext context) {
+        builder: (context) {
           initSize(context);
-          return SingleChildScrollView(child: _build(context));
+          return SingleChildScrollView(
+            child: Stack(
+              children: [
+                three_jsm.DomLikeListenable(
+                  key: globalKey,
+                  builder: (_) => Container(
+                    width: width,
+                    height: height,
+                    color: Colors.red,
+                    child: Builder(
+                      builder: (BuildContext context) {
+                        if (kIsWeb) {
+                          return three3dRender.isInitialized
+                              ? HtmlElementView(viewType: three3dRender.textureId!.toString())
+                              : const Center(child: CircularProgressIndicator());
+                        } else {
+                          return three3dRender.isInitialized
+                              ? Texture(textureId: three3dRender.textureId!)
+                              : Container(color: Colors.red);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  right: 20,
+                  child: Center(
+                    child: ZoomButtons(
+                      zoomIn: () => controls
+                        ..dollyIn(0.9)
+                        ..update(),
+                      zoomOut: () => controls
+                        ..dollyIn(1.1)
+                        ..update(),
+                    ),
+                  ),
+                )
+              ],
+            ),
+          );
         },
       ),
-    );
-  }
-
-  Widget _build(BuildContext context) {
-    return Column(
-      children: [
-        Stack(
-          children: [
-            three_jsm.DomLikeListenable(
-              key: globalKey,
-              builder: (context) => Container(
-                width: width,
-                height: height,
-                color: Colors.grey.shade100,
-                child: Builder(
-                  builder: (BuildContext context) {
-                    if (kIsWeb) {
-                      return three3dRender.isInitialized
-                          ? HtmlElementView(viewType: three3dRender.textureId!.toString())
-                          : const Center(child: CircularProgressIndicator());
-                    } else {
-                      return three3dRender.isInitialized
-                          ? Texture(textureId: three3dRender.textureId!)
-                          : Container(color: Colors.red);
-                    }
-                  },
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              bottom: 0,
-              right: 20,
-              child: Center(
-                child: ZoomButtons(
-                  zoomIn: () => controls
-                    ..dollyIn(0.9)
-                    ..update(),
-                  zoomOut: () => controls
-                    ..dollyIn(1.1)
-                    ..update(),
-                ),
-              ),
-            )
-          ],
-        ),
-      ],
     );
   }
 
@@ -172,7 +170,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  initRenderer() {
+  void initScene() async {
+    initRenderer();
+    initPage();
+  }
+
+  void initRenderer() {
     Map<String, dynamic> options = {
       "width": width,
       "height": height,
@@ -201,12 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void initScene() async {
-    initRenderer();
-    initPage();
-  }
-
-  void initPage() async {
+  void initPage() {
     final aspectRatio = width / height;
 
     scene = three.Scene()
@@ -227,48 +225,48 @@ class _HomeScreenState extends State<HomeScreen> {
 
     raycaster = three.Raycaster();
 
-    ground = await create3DObject(
+    ground = create3DObject(
       width: 100,
       length: 100,
-      asset: 'assets/grass.png',
+      texture: groundTexture,
       textureRepeat: true,
       countRepeat: 25,
     );
 
-    var containerBottom = await create3DObject(
+    var containerBottom = create3DObject(
           width: truckSize.y,
           length: truckSize.x,
           height: 0.01,
           rotation: three.Vector3(0, 0, pi / 2),
-          asset: 'assets/truck_container.jpg',
+          texture: containerTexture,
         ),
-        containerFront = await create3DObject(
+        containerFront = create3DObject(
           width: truckSize.x,
           length: truckSize.z,
           position: three.Vector3(0, truckSize.y / 2, truckSize.z / 2),
           rotation: three.Vector3(pi / 2, 0, 0),
-          asset: 'assets/truck_container.jpg',
+          texture: containerTexture,
         ),
-        containerRight = await create3DObject(
+        containerRight = create3DObject(
           width: truckSize.y,
           length: truckSize.z,
           position: three.Vector3(truckSize.x / 2, 0, truckSize.z / 2),
           rotation: three.Vector3(pi / 2, -pi / 2, 0),
-          asset: 'assets/truck_container.jpg',
+          texture: containerTexture,
         ),
-        containerLeft = await create3DObject(
+        containerLeft = create3DObject(
           width: truckSize.y,
           length: truckSize.z,
           position: three.Vector3(-truckSize.x / 2, 0, truckSize.z / 2),
           rotation: three.Vector3(pi / 2, pi / 2, 0),
-          asset: 'assets/truck_container.jpg',
+          texture: containerTexture,
         ),
-        containerBack = await create3DObject(
+        containerBack = create3DObject(
           width: truckSize.x,
           length: truckSize.z,
           position: three.Vector3(0, -truckSize.y / 2, truckSize.z / 2),
           rotation: three.Vector3(pi / 2, pi, 0),
-          asset: 'assets/truck_container.jpg',
+          texture: containerTexture,
         );
     var truckContainer = [containerBottom, containerRight, containerLeft, containerFront, containerBack];
 
@@ -294,32 +292,32 @@ class _HomeScreenState extends State<HomeScreen> {
         );
     var lines = [lineLH, lineW];
 
-    var textWidth = await createText(
+    var textWidth = createText(
           '${truckSize.x * 1000}',
           three.Vector3(truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 1.5, 0),
         ),
-        textLength = await createText(
+        textLength = createText(
           '${truckSize.y * 1000}',
           three.Vector3(truckSize.x * 1.2, -truckSize.y / 2, 0),
           three.Vector3(0, 0, pi / 2),
         ),
-        textHeight = await createText(
+        textHeight = createText(
           '${truckSize.z * 1000}',
           three.Vector3(truckSize.x, truckSize.y / 2, truckSize.z),
           three.Vector3(pi / 2, pi / 4),
         ),
-        textZeroLH = await createText(
+        textZeroLH = createText(
           '0',
           three.Vector3(truckSize.x * 1.2, truckSize.y / 2 - 0.2, 0),
           three.Vector3(0, 0, pi / 2),
         ),
-        textZeroW = await createText(
+        textZeroW = createText(
           '0',
           three.Vector3(-truckSize.x / 2 - 0.2, -truckSize.y / 2 - truckSize.x / 1.5, 0),
         );
     var texts = [textWidth, textLength, textHeight, textZeroLH, textZeroW];
 
-    var box1 = await create3DObject(
+    var box1 = create3DObject(
           width: 2,
           length: 2,
           height: 2,
@@ -327,7 +325,7 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.amber,
           castShadow: true,
         ),
-        box2 = await create3DObject(
+        box2 = create3DObject(
           width: 1.5,
           length: 1.5,
           height: 1.5,
@@ -335,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.redAccent,
           castShadow: true,
         ),
-        box3 = await create3DObject(
+        box3 = create3DObject(
           width: 2.5,
           length: 2.5,
           height: 1.5,
@@ -343,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.purple,
           castShadow: true,
         ),
-        box4 = await create3DObject(
+        box4 = create3DObject(
           width: 2,
           length: 4.5,
           height: 2.5,
@@ -355,10 +353,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     var light = three.PointLight(three.Color.setRGB255(255, 255, 255), 1)
           ..position.z = 30
-          ..position.x = 30
+          ..position.x = 10
           ..position.y = 30
           ..castShadow = true,
-        ambientLight = three.AmbientLight(three.Color(0xffffff), 0.3);
+        ambientLight = three.AmbientLight(three.Color(0xffffff), 0.5);
     var lights = [light, ambientLight];
 
     scene
@@ -369,98 +367,94 @@ class _HomeScreenState extends State<HomeScreen> {
       ..addAll(boxes)
       ..addAll(lights);
 
-    void dragObject(event) {
-      final point = pointToVector2(event.offset);
-      raycaster.setFromCamera(point, camera);
-      var intersect = raycaster.intersectObject(ground, false);
-      if (intersect.isNotEmpty) {
-        draggableObject.position.set(
-          intersect.first.point.x,
-          -intersect.first.point.z,
-        );
-      }
-    }
-
-    renderer?.domElement.addEventListener(
-      'mousedown',
-      (event) {
-        final vector = pointToVector2(event.offset);
-        raycaster.setFromCamera(vector, camera);
-        var intersects = raycaster.intersectObjects(boxes, false);
-        if (intersects.isNotEmpty) {
-          controls.enabled = false;
-          draggableObject = intersects.first.object;
-          renderer!.domElement.addEventListener('mousemove', dragObject, true);
-        }
-      },
-      true,
-    );
-    renderer?.domElement.addEventListener(
-      'mouseup',
-      (event) {
-        renderer!.domElement.removeEventListener('mousemove', dragObject, true);
-        controls.enabled = true;
-      },
-      true,
-    );
+    controls.domElement
+      ..addEventListener(
+        'pointerdown',
+        (event) {
+          final vector = pointToVector2(event);
+          raycaster.setFromCamera(vector, camera);
+          var intersects = raycaster.intersectObjects(boxes, false);
+          if (intersects.isNotEmpty) {
+            draggableObject = intersects.first.object;
+            controls
+              ..enabled = false
+              ..domElement.addEventListener('pointermove', dragObject);
+          }
+        },
+      )
+      ..addEventListener(
+        'pointerup',
+        (event) {
+          controls
+            ..domElement.removeEventListener('pointermove', dragObject)
+            ..enabled = true;
+        },
+      );
 
     loaded = true;
     animate();
   }
 
-  three.Vector2 pointToVector2(Point point) {
+  void dragObject(event) {
+    final point = pointToVector2(event);
+    raycaster.setFromCamera(point, camera);
+    var intersects = raycaster.intersectObject(ground, false);
+    if (intersects.isNotEmpty) {
+      var point = intersects.first.point;
+      draggableObject.position.set(point.x, -point.z);
+    }
+  }
+
+  three.Vector2 pointToVector2(three_jsm.WebPointerEvent point) {
     return three.Vector2(
-      -(width / 2 - point.x) * 2 / width,
-      (height / 2 - point.y) * 2 / height,
+      -(width / 2 - point.clientX) * 2 / width,
+      (height / 2 - point.clientY) * 2 / height,
     );
   }
 
   Future<three.Font> loadFont() async {
-    var loader = three_jsm.TYPRLoader(null);
-    var fontJson = await loader.loadAsync("${kIsWeb ? '/' : ''}assets/fonts/Figerona-VF.ttf");
+    var fontJson = await textLoader.loadAsync("${kIsWeb ? '/' : ''}assets/fonts/Figerona-VF.ttf");
     return three.TYPRFont(fontJson);
   }
 
-  Future<three.Object3D> createText(String text, three.Vector3 position, [three.Vector3? rotation]) async {
-    var font = await loadFont();
+  three.Object3D createText(String text, three.Vector3 position, [three.Vector3? rotation]) {
     var textGeo = three.TextGeometry(
       text,
-      {"font": font, "size": 0.25, "height": 0.001},
+      {"font": textFont, "size": 0.25, "height": 0.001},
     );
 
     var material = three.MeshBasicMaterial({"color": 0x000000});
-
-    var textMesh = three.Mesh(textGeo, material);
-
-    textMesh.position
-      ..x = position.x
-      ..y = position.y
-      ..z = position.z;
-    textMesh.rotation
-      ..x = rotation?.x ?? 0
-      ..y = rotation?.y ?? 0
-      ..z = rotation?.z ?? 0;
+    var textMesh = three.Mesh(textGeo, material)
+      ..position.set(
+        position.x,
+        position.y,
+        position.z,
+      )
+      ..rotation.set(
+        rotation?.x ?? 0,
+        rotation?.y ?? 0,
+        rotation?.z ?? 0,
+      );
     return textMesh;
   }
 
-  Future<three.Object3D> create3DObject({
+  three.Object3D create3DObject({
     required double width,
     required double length,
     three.Vector3? position,
     three.Vector3? rotation,
     double? height,
     Color? color,
-    String? asset,
+    three.Texture? texture,
     bool textureRepeat = false,
-    int? countRepeat,
+    double countRepeat = 10,
     bool castShadow = false,
-  }) async {
-    final texture = asset != null ? (await loader.loadAsync(asset)) : null;
-    if (asset != null && textureRepeat == true) {
-      texture!
+  }) {
+    if (texture != null && textureRepeat == true) {
+      texture
         ..wrapS = three.RepeatWrapping
         ..wrapT = three.RepeatWrapping
-        ..repeat.set((countRepeat ?? 10).toDouble(), (countRepeat ?? 10).toDouble());
+        ..repeat.set(countRepeat, countRepeat);
     }
     final params = {
       "color": three.Color.setRGB255(
@@ -475,7 +469,7 @@ class _HomeScreenState extends State<HomeScreen> {
         height == null ? three.PlaneGeometry(width, length) : three.BoxGeometry(width, length, height);
     return three.Mesh(
       geometry,
-      castShadow ? three.MeshPhongMaterial(params) : three.MeshBasicMaterial(params),
+      castShadow ? three.MeshLambertMaterial(params) : three.MeshBasicMaterial(params),
     )
       ..rotation.x = rotation?.x ?? 0
       ..rotation.y = rotation?.y ?? 0
