@@ -8,6 +8,8 @@ import 'package:three_dart_jsm/three_dart_jsm.dart' as three_jsm;
 import 'package:three_dart/three_dart.dart' as three;
 import 'package:web_app/presentation/widgets/zoom_buttons.dart';
 
+import '../widgets/object3d_form_field.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
@@ -36,9 +38,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool disposed = false;
 
   late three.Object3D ground;
-  late List<three.Object3D> boxes;
+  late List<three.Object3D> draggableObjects, boundaryObjects, collisionObjects;
   late three.Object3D targetObject;
-  late three.Object3D draggableProjection;
 
   late three.Texture groundTexture, containerTexture;
 
@@ -53,7 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final globalKey = GlobalKey<three_jsm.DomLikeListenableState>();
   late three_jsm.OrbitControls controls;
-  late three.Raycaster raycaster;
+  late three.Raycaster raycasterObjects, raycasterRoofs;
   late three.Font textFont;
 
   // Platform messages are asynchronous, so we initialize in an async method.
@@ -110,52 +111,78 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Builder(
-        builder: (context) {
-          initSize(context);
-          return SingleChildScrollView(
-            child: Stack(
+      body: SafeArea(
+        child: FutureBuilder(
+          future: initSize(context),
+          builder: (context, snap) {
+            return Stack(
               children: [
                 three_jsm.DomLikeListenable(
                   key: globalKey,
                   builder: (_) => Container(
                     width: width,
                     height: height,
-                    color: Colors.red,
+                    color: Colors.black,
                     child: Builder(
                       builder: (BuildContext context) {
-                        if (kIsWeb) {
-                          return three3dRender.isInitialized
-                              ? HtmlElementView(viewType: three3dRender.textureId!.toString())
-                              : const Center(child: CircularProgressIndicator());
-                        } else {
-                          return three3dRender.isInitialized
-                              ? Texture(textureId: three3dRender.textureId!)
-                              : Container(color: Colors.red);
-                        }
+                        return three3dRender.isInitialized
+                            ? kIsWeb
+                                ? HtmlElementView(viewType: three3dRender.textureId!.toString())
+                                : Texture(textureId: three3dRender.textureId!)
+                            : const Center(child: CircularProgressIndicator());
                       },
                     ),
                   ),
                 ),
-                Positioned(
-                  top: 0,
-                  bottom: 0,
-                  right: 20,
-                  child: Center(
-                    child: ZoomButtons(
-                      zoomIn: () => controls
-                        ..dollyIn(0.9)
-                        ..update(),
-                      zoomOut: () => controls
-                        ..dollyIn(1.1)
-                        ..update(),
+                if (three3dRender.isInitialized)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    right: 20,
+                    child: Center(
+                      child: ZoomButtons(
+                        zoomIn: () => controls
+                          ..dollyIn(0.9)
+                          ..update(),
+                        zoomOut: () => controls
+                          ..dollyIn(1.1)
+                          ..update(),
+                      ),
                     ),
                   ),
-                )
+                if (three3dRender.isInitialized)
+                  Positioned(
+                    top: 20,
+                    left: 20,
+                    child: Center(
+                      child: Object3DFormField(
+                        callback: (model) {
+                          final object = create3DObject(
+                            width: model.width / 1000,
+                            length: model.length / 1000,
+                            height: model.height / 1000,
+                            position: model.position,
+                            color: Color.fromRGBO(
+                              (three.Math.random() * 255).toInt(),
+                              (three.Math.random() * 255).toInt(),
+                              (three.Math.random() * 255).toInt(),
+                              1,
+                            ),
+                            castShadow: true,
+                          );
+
+                          draggableObjects.add(object);
+                          boundaryObjects.add(object);
+
+                          scene.add(object);
+                        },
+                      ),
+                    ),
+                  )
               ],
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -211,7 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     scene = three.Scene()
       ..background = three.Color.setRGB255(255, 255, 255)
-      ..rotateX(-three.Math.PI / 2);
+      ..rotateX(-pi / 2);
 
     camera = three.PerspectiveCamera(45, aspectRatio, 0.1, 1000)
       ..position.set(45, 30, 60)
@@ -225,7 +252,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ..dollyIn(0.3)
       ..update();
 
-    raycaster = three.Raycaster();
+    raycasterObjects = three.Raycaster();
+    raycasterRoofs = three.Raycaster();
 
     ground = create3DObject(
       width: 100,
@@ -269,8 +297,15 @@ class _HomeScreenState extends State<HomeScreen> {
           position: three.Vector3(0, -truckSize.y / 2, truckSize.z / 2),
           rotation: three.Vector3(pi / 2, pi, 0),
           texture: containerTexture,
+        ),
+        containerRoof = create3DObject(
+          width: truckSize.y,
+          length: truckSize.x,
+          position: three.Vector3(0, 0, truckSize.z + 0.000001),
+          rotation: three.Vector3(pi, 0, pi / 2),
+          texture: containerTexture,
         );
-    var truckContainer = [containerBottom, containerRight, containerLeft, containerFront, containerBack];
+    var truckContainer = [containerBottom, containerRight, containerLeft, containerFront, containerBack, containerRoof];
 
     var textMaterial = three.LineBasicMaterial()..color = three.Color.setRGB255(0, 0, 0);
     var linePointsLH = [
@@ -320,9 +355,9 @@ class _HomeScreenState extends State<HomeScreen> {
     var texts = [textWidth, textLength, textHeight, textZeroLH, textZeroW];
 
     var box1 = create3DObject(
-          width: 2,
-          length: 2,
-          height: 2,
+          width: 0.2,
+          length: 1,
+          height: 1,
           position: three.Vector3(10, 0, 0),
           color: Colors.amber,
           castShadow: true,
@@ -336,8 +371,8 @@ class _HomeScreenState extends State<HomeScreen> {
           castShadow: true,
         ),
         box3 = create3DObject(
-          width: 2.5,
-          length: 2.5,
+          width: 1.1,
+          length: 1.2,
           height: 1.5,
           position: three.Vector3(6, 0, 0),
           color: Colors.purple,
@@ -345,13 +380,45 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         box4 = create3DObject(
           width: 2,
-          length: 4.5,
-          height: 2.5,
+          length: 1.5,
+          height: 1.5,
           position: three.Vector3(5, -4, 0),
           color: Colors.cyan,
           castShadow: true,
+        ),
+        box5 = create3DObject(
+          width: 1.5,
+          length: 1.5,
+          height: 1.25,
+          position: three.Vector3(5, 6, 0),
+          color: Colors.blue.shade400,
+          castShadow: true,
+        ),
+        box6 = create3DObject(
+          width: 0.5,
+          length: 0.75,
+          height: 0.5,
+          position: three.Vector3(5, 10, 0),
+          color: Colors.pink.shade200,
+          castShadow: true,
+        ),
+        box7 = create3DObject(
+          width: 1,
+          length: 1,
+          height: 2,
+          position: three.Vector3(5, 3, 0),
+          color: Colors.tealAccent,
+          castShadow: true,
+        ),
+        box8 = create3DObject(
+          width: 1,
+          length: 1,
+          height: 1,
+          position: three.Vector3(7, 7, 0),
+          color: Colors.brown.shade600,
+          castShadow: true,
         );
-    boxes = [box1, box2, box3, box4];
+    draggableObjects = [box1, box2, box3, box4, box5, box6, box7, box8];
 
     var light = three.PointLight(three.Color.setRGB255(255, 255, 255), 1)
           ..position.z = 30
@@ -366,18 +433,24 @@ class _HomeScreenState extends State<HomeScreen> {
       ..addAll(truckContainer)
       ..addAll(lines)
       ..addAll(texts)
-      ..addAll(boxes)
+      ..addAll(draggableObjects)
       ..addAll(lights);
+
+    boundaryObjects = [...draggableObjects, ...truckContainer]..remove(containerBottom);
+
+    three.Color? targetColor;
 
     controls.domElement
       ..addEventListener(
         'pointerdown',
         (event) {
           final vector = pointToVector2(event);
-          raycaster.setFromCamera(vector, camera);
-          var intersects = raycaster.intersectObjects(boxes, true);
+          raycasterObjects.setFromCamera(vector, camera);
+          var intersects = raycasterObjects.intersectObjects(draggableObjects, true);
           if (intersects.isNotEmpty) {
             targetObject = intersects.first.object;
+            targetColor = targetObject.material.color;
+            targetObject.material.color = three.Color(0X00aaffaa);
             controls
               ..enabled = false
               ..domElement.addEventListener('pointermove', dragObject);
@@ -387,6 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ..addEventListener(
         'pointerup',
         (event) {
+          if (targetColor != null) targetObject.material.color = targetColor;
           controls
             ..domElement.removeEventListener('pointermove', dragObject)
             ..enabled = true;
@@ -398,31 +472,87 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void dragObject(event) {
-    final point = pointToVector2(event);
-    raycaster.setFromCamera(point, camera);
-    var intersects = raycaster.intersectObject(ground, false);
-    if (intersects.isNotEmpty) {
-      var point = intersects.first.point;
-      draggableProjection = targetObject.clone()
-        ..position.set(point.x, -point.z, targetObject.position.z)
-        ..name = 'boundingbox';
-      scene.add(draggableProjection..visible = false);
-      if (!intersectObjMas(draggableProjection, [...boxes]..remove(targetObject))) {
-        targetObject.position.set(point.x, -point.z);
+    var point = pointToVector2(event);
+    raycasterObjects = three.Raycaster()..setFromCamera(point, camera);
+    var intersectingObjects = raycasterObjects.intersectObject(ground, false);
+    if (intersectingObjects.isNotEmpty) {
+      collisionObjects = [...boundaryObjects]..remove(targetObject);
+      var pointOnGround = intersectingObjects[0].point;
+      var dx = pointOnGround.x, dy = -pointOnGround.z, dz = targetObject.geometry?.parameters?['depth'] / 2 + 0.000001;
+      raycasterRoofs.setFromCamera(point, camera);
+      var intersectingRoofs = raycasterRoofs.intersectObjects(
+        collisionObjects,
+        true,
+      );
+      if (intersectingRoofs.isNotEmpty) {
+        var indexSide = three.Math.floor(intersectingRoofs[0].faceIndex / 2);
+        if (indexSide == 4) {
+          var object = intersectingRoofs.first.object;
+          var objectParams = object.geometry?.parameters;
+          var uv = intersectingRoofs[0].uv;
+          dx = object.position.x - objectParams?['width'] / 2 + objectParams?['width'] * uv.x;
+          dy = object.position.y - objectParams?['height'] / 2 + objectParams?['height'] * uv.y;
+          dz += object.position.z + objectParams?['depth'] / 2;
+        }
+      }
+
+      var nextObject = targetObject.clone()
+            ..position.set(dx, dy, dz)
+            ..visible = false,
+          nextObjectX = targetObject.clone()
+            ..position.setX(dx)
+            ..position.setZ(dz)
+            ..visible = false,
+          nextObjectY = targetObject.clone()
+            ..position.setY(dy)
+            ..position.setZ(dz)
+            ..visible = false;
+
+      scene.addAll([nextObject, nextObjectX, nextObjectY]);
+      var pos = getNewPos(nextObject, nextObjectX, nextObjectY);
+      scene.removeList([nextObject, nextObjectX, nextObjectY]);
+      if (pos != null) {
+        targetObject.position = pos;
       }
     }
   }
 
-  bool intersectObjMas(three.Object3D target, List<three.Object3D> objects) {
-    final box = three.Box3().setFromObject(target);
-    for (var item in objects) {
-      final anotherBox = three.Box3().setFromObject(item);
-      if (box.intersectsBox(anotherBox)) {
-        scene.remove(scene.getObjectByName('boundingbox')!);
-        return true;
+  three.Vector3? getNewPos(
+    three.Object3D objectXY,
+    three.Object3D objectX,
+    three.Object3D objectY,
+  ) {
+    var objects = collisionObjects;
+    var intersects = List.generate(3, (_) => false);
+    var boxXY = getBox3(objectXY), boxX = getBox3(objectX), boxY = getBox3(objectY);
+    for (var key = 0; key < objects.length; key++) {
+      var item = objects[key];
+      var anotherBox = getBox3(item);
+      if (anotherBox.intersectsBox(boxXY)) {
+        intersects[0] = true;
+        bool intersectX = anotherBox.intersectsBox(boxX), intersectY = anotherBox.intersectsBox(boxY);
+        if (intersectX && intersectY) {
+          continue;
+        }
+        intersects[intersectX ? 1 : 2] = true;
       }
     }
-    return false;
+
+    if (!intersects[0]) {
+      return objectXY.position;
+    }
+    if (!intersects[1]) {
+      return objectX.position;
+    }
+    if (!intersects[2]) {
+      return objectY.position;
+    }
+
+    return null;
+  }
+
+  three.Box3 getBox3(three.Object3D object) {
+    return three.Box3().setFromObject(object);
   }
 
   three.Vector2 pointToVector2(three_jsm.WebPointerEvent point) {
@@ -482,7 +612,7 @@ class _HomeScreenState extends State<HomeScreen> {
         color?.green ?? 255,
         color?.blue ?? 255,
       ),
-      "map": texture
+      if (texture != null) "map": texture
     };
 
     final three.BufferGeometry geometry =
@@ -509,11 +639,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // cube.position.x += 0.1;
-    // cube.position.z += 0.05;
-    // scene.rotation.z += 0.05;
-    // camera..zoom += 0.01..updateProjectionMatrix();
-
     render();
 
     Future.delayed(const Duration(milliseconds: 15), () {
@@ -523,8 +648,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    print(" dispose ............. ");
-
     disposed = true;
     three3dRender.dispose();
 

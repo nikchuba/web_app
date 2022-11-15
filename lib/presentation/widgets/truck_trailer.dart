@@ -35,8 +35,8 @@ class TruckTrailer extends StatelessWidget {
       animation: controller,
       builder: (context, child) {
         return Positioned(
-          top: controller.offset.dx.toDouble(),
-          left: controller.offset.dy.toDouble(),
+          top: controller.offset.x,
+          left: controller.offset.y,
           child: Stack(
             fit: StackFit.loose,
             clipBehavior: Clip.none,

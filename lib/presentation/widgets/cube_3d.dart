@@ -26,8 +26,8 @@ class Cube3D extends StatelessWidget {
         animation: controller,
         builder: (context, child) {
           return Positioned(
-            top: controller.offset.dx.toDouble(),
-            left: controller.offset.dy.toDouble(),
+            top: controller.offset.x,
+            left: controller.offset.x,
             width: _size,
             height: _size,
             child: GestureDetector(
