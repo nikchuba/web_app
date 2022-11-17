@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:three_dart/three3d/math/vector3.dart';
-import 'package:web_app/domain/models/model3d_item.dart';
+import 'package:three_dart/three3d/core/index.dart';
+import 'package:web_app/domain/models/model3d.dart';
 import 'package:web_app/presentation/widgets/number_input_field.dart';
+import 'package:web_app/presentation/widgets/selector.dart';
 
 class Object3DFormField extends StatefulWidget {
   const Object3DFormField({
@@ -9,20 +10,23 @@ class Object3DFormField extends StatefulWidget {
     required this.callback,
   }) : super(key: key);
 
-  final Function(Model3DItem) callback;
+  final Function(Object3D) callback;
 
   @override
   State<Object3DFormField> createState() => _Object3DFormFieldState();
 }
 
-class _Object3DFormFieldState extends State<Object3DFormField> with TickerProviderStateMixin {
+class _Object3DFormFieldState extends State<Object3DFormField>
+    with TickerProviderStateMixin {
   late AnimationController animationController;
-  late TextEditingController widthController, heightController, lengthController;
+  late TextEditingController widthController,
+      heightController,
+      lengthController;
+  late ValueNotifier<Model3DType> typeController;
   late Animation<double> animation;
-  late ValueNotifier<bool> isOpen;
+  late ValueNotifier<bool> isClosed;
 
-  final double width = 200;
-  final double height = 350;
+  final double width = 200, height = 400;
 
   @override
   void initState() {
@@ -31,11 +35,14 @@ class _Object3DFormFieldState extends State<Object3DFormField> with TickerProvid
       vsync: this,
       duration: const Duration(milliseconds: 200),
     )..addListener(() => setState(() {}));
-    animation = CurveTween(curve: Curves.decelerate).animate(animationController);
+    animation = CurveTween(
+      curve: Curves.decelerate,
+    ).animate(animationController);
     widthController = TextEditingController(text: '700');
     heightController = TextEditingController(text: '700');
     lengthController = TextEditingController(text: '700');
-    isOpen = ValueNotifier(false);
+    typeController = ValueNotifier(Model3DType.box);
+    isClosed = ValueNotifier(true);
   }
 
   @override
@@ -49,25 +56,28 @@ class _Object3DFormFieldState extends State<Object3DFormField> with TickerProvid
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: height,
+        maxWidth: width,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               ValueListenableBuilder(
-                valueListenable: isOpen,
-                builder: (context, isOpen, child) {
+                valueListenable: isClosed,
+                builder: (context, value, child) {
                   return TextButton(
-                    onPressed: !isOpen ? _showOverlay : null,
+                    onPressed: value ? showForm : null,
                     style: TextButton.styleFrom(
                         backgroundColor: Colors.white,
                         fixedSize: const Size(120, 50),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(100))),
                     child: const Text('Новый объект'),
                   );
                 },
@@ -76,7 +86,7 @@ class _Object3DFormFieldState extends State<Object3DFormField> with TickerProvid
                 duration: Duration.zero,
                 scale: animation.value,
                 child: TextButton(
-                  onPressed: _closeOverlay,
+                  onPressed: closeForm,
                   style: TextButton.styleFrom(
                     backgroundColor: Colors.red.shade50,
                     foregroundColor: Colors.redAccent,
@@ -88,6 +98,7 @@ class _Object3DFormFieldState extends State<Object3DFormField> with TickerProvid
               ),
             ],
           ),
+          const SizedBox(height: 20),
           AnimatedOpacity(
             duration: Duration.zero,
             opacity: animation.value,
@@ -105,39 +116,49 @@ class _Object3DFormFieldState extends State<Object3DFormField> with TickerProvid
                   ),
                 ],
               ),
-              padding: EdgeInsets.all(MediaQuery.of(context).size.height * 0.02),
-              width: width,
-              height: height - 80,
+              padding: const EdgeInsets.all(20),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   NumberInputField(
                     label: 'Ширина (мм)',
                     controller: widthController,
                   ),
-                  NumberInputField(
-                    label: 'Длина (мм)',
-                    controller: lengthController,
+                  ValueListenableBuilder(
+                    valueListenable: typeController,
+                    builder: (context, value, child) {
+                      return value == Model3DType.box
+                          ? NumberInputField(
+                              label: 'Длина (мм)',
+                              controller: lengthController,
+                            )
+                          : const SizedBox();
+                    },
                   ),
                   NumberInputField(
                     label: 'Высота (мм)',
                     controller: heightController,
                   ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Selector(
+                      items: const {
+                        Model3DType.box: 'Коробка',
+                        Model3DType.cylinder: 'Цилиндр',
+                      },
+                      controller: typeController,
+                      closeController: isClosed,
+                    ),
+                  ),
                   TextButton(
-                    onPressed: () {
-                      final model = Model3DItem(
-                        position: Vector3(1.5, 8, 0),
-                        width: double.parse(widthController.text),
-                        length: double.parse(lengthController.text),
-                        height: double.parse(heightController.text),
-                      );
-                      widget.callback(model);
-                      _closeOverlay();
-                    },
+                    onPressed: add,
                     style: TextButton.styleFrom(
                       backgroundColor: Colors.blue.shade50,
                       fixedSize: const Size(200, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(100),
+                      ),
                     ),
                     child: const Text('Добавить'),
                   ),
@@ -150,17 +171,39 @@ class _Object3DFormFieldState extends State<Object3DFormField> with TickerProvid
     );
   }
 
-  void _showOverlay() async {
+  void add() {
+    var type = typeController.value;
+    var model = Model3D(
+      position: Vector3(0, 8, 0),
+      width: sizeToDouble(widthController.text),
+      height: sizeToDouble(heightController.text),
+      length: type == Model3DType.cylinder
+          ? sizeToDouble(widthController.text)
+          : sizeToDouble(lengthController.text),
+      type: type,
+      castShadow: true,
+      receiveShadow: true,
+      randomColor: true,
+    );
+    widget.callback(model.getObject3D());
+    closeForm();
+  }
+
+  double sizeToDouble(String value) {
+    return double.parse(value) / 1000;
+  }
+
+  void showForm() async {
     if (!animationController.isAnimating) {
+      isClosed.value = false;
       await animationController.forward();
-      isOpen.value = true;
     }
   }
 
-  void _closeOverlay() async {
+  void closeForm() async {
     if (!animationController.isAnimating) {
+      isClosed.value = true;
       await animationController.reverse();
-      isOpen.value = false;
     }
   }
 }

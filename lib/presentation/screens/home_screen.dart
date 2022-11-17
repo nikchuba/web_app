@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gl/flutter_gl.dart';
 import 'package:three_dart_jsm/three_dart_jsm.dart' as three_jsm;
 import 'package:three_dart/three_dart.dart' as three;
+import 'package:web_app/domain/models/model3d.dart';
 import 'package:web_app/presentation/widgets/zoom_buttons.dart';
 
 import '../widgets/object3d_form_field.dart';
@@ -50,7 +51,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool loaded = false;
 
   int counter = 0;
-  double fontHeight = 20, size = 70, hover = 30, curveSegments = 4, bevelThickness = 2, bevelSize = 1.5;
+  double fontHeight = 20,
+      size = 70,
+      hover = 30,
+      curveSegments = 4,
+      bevelThickness = 2,
+      bevelSize = 1.5;
 
   final globalKey = GlobalKey<three_jsm.DomLikeListenableState>();
   late three_jsm.OrbitControls controls;
@@ -79,7 +85,8 @@ class _HomeScreenState extends State<HomeScreen> {
     textLoader = three_jsm.TYPRLoader(null);
 
     groundTexture = await textureLoader.loadAsync('assets/grass.png');
-    containerTexture = await textureLoader.loadAsync('assets/truck_container.jpg');
+    containerTexture =
+        await textureLoader.loadAsync('assets/truck_container.jpg');
 
     textFont = await loadFont();
 
@@ -88,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {});
 
     // Wait for web
-    Future.delayed(const Duration(milliseconds: 200), () async {
+    Future.delayed(Duration.zero, () async {
       await three3dRender.prepareContext();
 
       initScene();
@@ -127,8 +134,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       builder: (BuildContext context) {
                         return three3dRender.isInitialized
                             ? kIsWeb
-                                ? HtmlElementView(viewType: three3dRender.textureId!.toString())
-                                : Texture(textureId: three3dRender.textureId!)
+                                ? HtmlElementView(
+                                    viewType:
+                                        three3dRender.textureId!.toString(),
+                                  )
+                                : Texture(
+                                    textureId: three3dRender.textureId!,
+                                    filterQuality: FilterQuality.none,
+                                  )
                             : const Center(child: CircularProgressIndicator());
                       },
                     ),
@@ -156,24 +169,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     left: 20,
                     child: Center(
                       child: Object3DFormField(
-                        callback: (model) {
-                          final object = create3DObject(
-                            width: model.width / 1000,
-                            length: model.length / 1000,
-                            height: model.height / 1000,
-                            position: model.position,
-                            color: Color.fromRGBO(
-                              (three.Math.random() * 255).toInt(),
-                              (three.Math.random() * 255).toInt(),
-                              (three.Math.random() * 255).toInt(),
-                              1,
-                            ),
-                            castShadow: true,
-                          );
-
+                        callback: (object) {
                           draggableObjects.add(object);
                           boundaryObjects.add(object);
-
                           scene.add(object);
                         },
                       ),
@@ -224,8 +222,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!kIsWeb) {
       var pars = three.WebGLRenderTargetOptions({"format": three.RGBAFormat});
-      renderTarget =
-          three.WebGLRenderTarget((width * devicePixelRatio).toInt(), (height * devicePixelRatio).toInt(), pars);
+      renderTarget = three.WebGLRenderTarget(
+        (width * devicePixelRatio).toInt(),
+        (height * devicePixelRatio).toInt(),
+        pars,
+      );
       renderTarget.samples = 4;
       renderer!.setRenderTarget(renderTarget);
 
@@ -237,7 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final aspectRatio = width / height;
 
     scene = three.Scene()
-      ..background = three.Color.setRGB255(255, 255, 255)
+      ..background = three.Color.setRGB255(200, 255, 255)
       ..rotateX(-pi / 2);
 
     camera = three.PerspectiveCamera(45, aspectRatio, 0.1, 1000)
@@ -255,66 +256,71 @@ class _HomeScreenState extends State<HomeScreen> {
     raycasterObjects = three.Raycaster();
     raycasterRoofs = three.Raycaster();
 
-    ground = create3DObject(
-      width: 100,
-      length: 100,
-      texture: groundTexture,
-      textureRepeat: true,
-      countRepeat: 25,
-    );
+    var modelWithShadow = Model3D(castShadow: true, receiveShadow: true);
 
-    var containerBottom = create3DObject(
-          width: truckSize.y,
-          length: truckSize.x,
-          height: 0.01,
-          rotation: three.Vector3(0, 0, pi / 2),
-          texture: containerTexture,
-        ),
-        containerFront = create3DObject(
-          width: truckSize.x,
-          length: truckSize.z,
-          position: three.Vector3(0, truckSize.y / 2, truckSize.z / 2),
-          rotation: three.Vector3(pi / 2, 0, 0),
-          texture: containerTexture,
-        ),
-        containerRight = create3DObject(
-          width: truckSize.y,
-          length: truckSize.z,
-          position: three.Vector3(truckSize.x / 2, 0, truckSize.z / 2),
-          rotation: three.Vector3(pi / 2, -pi / 2, 0),
-          texture: containerTexture,
-        ),
-        containerLeft = create3DObject(
-          width: truckSize.y,
-          length: truckSize.z,
-          position: three.Vector3(-truckSize.x / 2, 0, truckSize.z / 2),
-          rotation: three.Vector3(pi / 2, pi / 2, 0),
-          texture: containerTexture,
-        ),
-        containerBack = create3DObject(
-          width: truckSize.x,
-          length: truckSize.z,
-          position: three.Vector3(0, -truckSize.y / 2, truckSize.z / 2),
-          rotation: three.Vector3(pi / 2, pi, 0),
-          texture: containerTexture,
-        ),
-        containerRoof = create3DObject(
-          width: truckSize.y,
-          length: truckSize.x,
-          position: three.Vector3(0, 0, truckSize.z + 0.000001),
-          rotation: three.Vector3(pi, 0, pi / 2),
-          texture: containerTexture,
-        );
-    var truckContainer = [containerBottom, containerRight, containerLeft, containerFront, containerBack, containerRoof];
+    ground = modelWithShadow
+        .clone(
+          type: Model3DType.plane,
+          width: 100,
+          length: 100,
+          texture: groundTexture,
+          textureRepeatCount: 25,
+        )
+        .getObject3D();
 
-    var textMaterial = three.LineBasicMaterial()..color = three.Color.setRGB255(0, 0, 0);
+    var truckModel =
+        Model3D(texture: containerTexture, type: Model3DType.plane);
+
+    var truckBottom = truckModel.clone(
+            name: 'truckBottom',
+            width: truckSize.y,
+            length: truckSize.x,
+            height: 0.01,
+            rotation: three.Vector3(0, 0, pi / 2)),
+        truckFront = truckModel.clone(
+            width: truckSize.x,
+            length: truckSize.z,
+            position: three.Vector3(0, truckSize.y / 2, truckSize.z / 2),
+            rotation: three.Vector3(pi / 2, 0, 0)),
+        truckRight = truckModel.clone(
+            width: truckSize.y,
+            length: truckSize.z,
+            position: three.Vector3(truckSize.x / 2, 0, truckSize.z / 2),
+            rotation: three.Vector3(pi / 2, -pi / 2, 0)),
+        truckLeft = truckModel.clone(
+            width: truckSize.y,
+            length: truckSize.z,
+            position: three.Vector3(-truckSize.x / 2, 0, truckSize.z / 2),
+            rotation: three.Vector3(pi / 2, pi / 2, 0)),
+        truckBack = truckModel.clone(
+            width: truckSize.x,
+            length: truckSize.z,
+            position: three.Vector3(0, -truckSize.y / 2, truckSize.z / 2),
+            rotation: three.Vector3(pi / 2, pi, 0)),
+        truckRoof = truckModel.clone(
+            width: truckSize.y,
+            length: truckSize.x,
+            position: three.Vector3(0, 0, truckSize.z + 0.000001),
+            rotation: three.Vector3(pi, 0, pi / 2));
+    var truckContainer = [
+      truckBottom.getObject3D(),
+      truckRight.getObject3D(),
+      truckLeft.getObject3D(),
+      truckFront.getObject3D(),
+      truckBack.getObject3D(),
+      truckRoof.getObject3D(),
+    ];
+
+    var textMaterial = three.LineBasicMaterial()
+      ..color = three.Color.setRGB255(0, 0, 0);
     var linePointsLH = [
           three.Vector3(truckSize.x, -truckSize.y / 2, 0),
           three.Vector3(truckSize.x, truckSize.y / 2, 0),
           three.Vector3(truckSize.x, truckSize.y / 2, truckSize.z),
         ],
         linePointsW = [
-          three.Vector3(-truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 2, 0),
+          three.Vector3(
+              -truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 2, 0),
           three.Vector3(truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 2, 0),
         ];
     var lineGeometryLH = three.BufferGeometry().setFromPoints(linePointsLH),
@@ -331,7 +337,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     var textWidth = createText(
           '${truckSize.x * 1000}',
-          three.Vector3(truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 1.5, 0),
+          three.Vector3(
+              truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 1.5, 0),
         ),
         textLength = createText(
           '${truckSize.y * 1000}',
@@ -350,83 +357,89 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         textZeroW = createText(
           '0',
-          three.Vector3(-truckSize.x / 2 - 0.2, -truckSize.y / 2 - truckSize.x / 1.5, 0),
+          three.Vector3(
+              -truckSize.x / 2 - 0.2, -truckSize.y / 2 - truckSize.x / 1.5, 0),
         );
     var texts = [textWidth, textLength, textHeight, textZeroLH, textZeroW];
 
-    var box1 = create3DObject(
-          width: 0.2,
-          length: 1,
-          height: 1,
-          position: three.Vector3(10, 0, 0),
-          color: Colors.amber,
-          castShadow: true,
-        ),
-        box2 = create3DObject(
-          width: 1.5,
-          length: 1.5,
-          height: 1.5,
-          position: three.Vector3(9, 2, 0),
-          color: Colors.redAccent,
-          castShadow: true,
-        ),
-        box3 = create3DObject(
-          width: 1.1,
-          length: 1.2,
-          height: 1.5,
-          position: three.Vector3(6, 0, 0),
-          color: Colors.purple,
-          castShadow: true,
-        ),
-        box4 = create3DObject(
-          width: 2,
-          length: 1.5,
-          height: 1.5,
-          position: three.Vector3(5, -4, 0),
-          color: Colors.cyan,
-          castShadow: true,
-        ),
-        box5 = create3DObject(
-          width: 1.5,
-          length: 1.5,
-          height: 1.25,
-          position: three.Vector3(5, 6, 0),
-          color: Colors.blue.shade400,
-          castShadow: true,
-        ),
-        box6 = create3DObject(
-          width: 0.5,
-          length: 0.75,
-          height: 0.5,
-          position: three.Vector3(5, 10, 0),
-          color: Colors.pink.shade200,
-          castShadow: true,
-        ),
-        box7 = create3DObject(
-          width: 1,
-          length: 1,
-          height: 2,
-          position: three.Vector3(5, 3, 0),
-          color: Colors.tealAccent,
-          castShadow: true,
-        ),
-        box8 = create3DObject(
-          width: 1,
-          length: 1,
-          height: 1,
-          position: three.Vector3(7, 7, 0),
-          color: Colors.brown.shade600,
-          castShadow: true,
-        );
-    draggableObjects = [box1, box2, box3, box4, box5, box6, box7, box8];
+    var box1 = modelWithShadow.clone(
+            width: 0.2,
+            length: 1,
+            height: 1,
+            position: three.Vector3(10, 0, 0),
+            color: Colors.amber),
+        box2 = modelWithShadow.clone(
+            width: 1.5,
+            length: 1.5,
+            height: 1.5,
+            position: three.Vector3(9, 2, 0),
+            color: Colors.redAccent),
+        box3 = modelWithShadow.clone(
+            width: 1.1,
+            length: 1.2,
+            height: 1.5,
+            position: three.Vector3(6, 0, 0),
+            color: Colors.purple),
+        box4 = modelWithShadow.clone(
+            width: 2,
+            length: 1.5,
+            height: 1.5,
+            position: three.Vector3(5, -4, 0),
+            color: Colors.cyan),
+        box5 = modelWithShadow.clone(
+            width: 1.5,
+            length: 1.5,
+            height: 1.25,
+            position: three.Vector3(5, 6, 0),
+            color: Colors.blue.shade400),
+        box6 = modelWithShadow.clone(
+            width: 0.5,
+            length: 0.75,
+            height: 0.5,
+            position: three.Vector3(5, 10, 0),
+            color: Colors.pink.shade200),
+        box7 = modelWithShadow.clone(
+            width: 1,
+            length: 1,
+            height: 2,
+            position: three.Vector3(5, 3, 0),
+            color: Colors.tealAccent),
+        box8 = modelWithShadow.clone(
+            width: 1,
+            length: 1,
+            height: 1,
+            position: three.Vector3(7, 7, 0),
+            color: Colors.brown.shade600),
+        box9 = modelWithShadow.clone(
+            width: 1,
+            length: 1,
+            height: 4,
+            position: three.Vector3(7, 4, 0),
+            color: Colors.grey);
+    draggableObjects = [
+      box1.getObject3D(),
+      box2.getObject3D(),
+      box3.getObject3D(),
+      box4.getObject3D(),
+      box5.getObject3D(),
+      box6.getObject3D(),
+      box7.getObject3D(),
+      box8.getObject3D(),
+      box9.getObject3D(),
+    ];
 
-    var light = three.PointLight(three.Color.setRGB255(255, 255, 255), 1)
-          ..position.z = 30
-          ..position.x = 10
-          ..position.y = 30
+    var light = three.SpotLight(three.Color(0xffa95c), 1.0)
+          ..position.z = 100
+          ..position.x = 100
+          ..position.y = 100
           ..castShadow = true,
-        ambientLight = three.AmbientLight(three.Color(0xffffff), 0.5);
-    var lights = [light, ambientLight];
+        ambientLight = three.AmbientLight(three.Color(0xffeeb1), 0.4),
+        hemisphereLight = three.HemisphereLight(
+            three.Color(0xffeeb1), three.Color(0x080820), 0.5);
+    light.shadow
+      ?..mapSize = three.Vector2(10024, 10024)
+      ..blurSamples = 100;
+    var lights = [light, ambientLight, hemisphereLight];
 
     scene
       ..add(ground)
@@ -436,7 +449,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ..addAll(draggableObjects)
       ..addAll(lights);
 
-    boundaryObjects = [...draggableObjects, ...truckContainer]..remove(containerBottom);
+    boundaryObjects = [...draggableObjects, ...truckContainer]
+      ..removeWhere((e) => e.name == 'truckBottom');
 
     three.Color? targetColor;
 
@@ -446,11 +460,16 @@ class _HomeScreenState extends State<HomeScreen> {
         (event) {
           final vector = pointToVector2(event);
           raycasterObjects.setFromCamera(vector, camera);
-          var intersects = raycasterObjects.intersectObjects(draggableObjects, true);
+          var intersects =
+              raycasterObjects.intersectObjects(draggableObjects, true);
           if (intersects.isNotEmpty) {
             targetObject = intersects.first.object;
             targetColor = targetObject.material.color;
-            targetObject.material.color = three.Color(0X00aaffaa);
+            targetObject.material
+              ..color = three.Color(0X00aaffaa)
+              ..transparent = true
+              ..opacity = 0.8;
+
             controls
               ..enabled = false
               ..domElement.addEventListener('pointermove', dragObject);
@@ -460,7 +479,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ..addEventListener(
         'pointerup',
         (event) {
-          if (targetColor != null) targetObject.material.color = targetColor;
+          if (targetColor != null) {
+            targetObject.material
+              ..opacity = 1
+              ..color = targetColor;
+          }
           controls
             ..domElement.removeEventListener('pointermove', dragObject)
             ..enabled = true;
@@ -478,21 +501,34 @@ class _HomeScreenState extends State<HomeScreen> {
     if (intersectingObjects.isNotEmpty) {
       collisionObjects = [...boundaryObjects]..remove(targetObject);
       var pointOnGround = intersectingObjects[0].point;
-      var dx = pointOnGround.x, dy = -pointOnGround.z, dz = targetObject.geometry?.parameters?['depth'] / 2 + 0.000001;
+      var dx = pointOnGround.x,
+          dy = -pointOnGround.z,
+          dz = targetObject.geometry?.parameters?['height'] / 2 + 0.000001;
       raycasterRoofs.setFromCamera(point, camera);
       var intersectingRoofs = raycasterRoofs.intersectObjects(
         collisionObjects,
         true,
       );
       if (intersectingRoofs.isNotEmpty) {
-        var indexSide = three.Math.floor(intersectingRoofs[0].faceIndex / 2);
-        if (indexSide == 4) {
-          var object = intersectingRoofs.first.object;
-          var objectParams = object.geometry?.parameters;
+        var isCylinder =
+            intersectingRoofs[0].object.geometry?.type == 'CylinderGeometry';
+        var indexSide = three.Math.floor(
+          intersectingRoofs[0].faceIndex / (isCylinder ? 100 : 2),
+        );
+        if (indexSide == 2) {
+          var object = intersectingRoofs[0].object;
           var uv = intersectingRoofs[0].uv;
-          dx = object.position.x - objectParams?['width'] / 2 + objectParams?['width'] * uv.x;
-          dy = object.position.y - objectParams?['height'] / 2 + objectParams?['height'] * uv.y;
-          dz += object.position.z + objectParams?['depth'] / 2;
+          var objectParams = object.geometry?.parameters;
+          var width = (isCylinder ? 2 : 1) *
+                  objectParams?[!isCylinder ? 'width' : 'radiusTop'],
+              depth = (isCylinder ? 2 : 1) *
+                  objectParams?[!isCylinder ? 'depth' : 'radiusTop'];
+          dx = object.position.x - width * (0.5 - (!isCylinder ? uv.x : uv.y));
+          dy = object.position.y -
+              depth *
+                  (isCylinder ? -1 : 1) *
+                  (0.5 - (!isCylinder ? uv.y : uv.x));
+          dz += object.position.z + 0.5 * objectParams?['height'];
         }
       }
 
@@ -522,15 +558,17 @@ class _HomeScreenState extends State<HomeScreen> {
     three.Object3D objectX,
     three.Object3D objectY,
   ) {
-    var objects = collisionObjects;
     var intersects = List.generate(3, (_) => false);
-    var boxXY = getBox3(objectXY), boxX = getBox3(objectX), boxY = getBox3(objectY);
-    for (var key = 0; key < objects.length; key++) {
-      var item = objects[key];
+    var boxXY = getBox3(objectXY),
+        boxX = getBox3(objectX),
+        boxY = getBox3(objectY);
+    for (var key = 0; key < collisionObjects.length; key++) {
+      var item = collisionObjects[key];
       var anotherBox = getBox3(item);
       if (anotherBox.intersectsBox(boxXY)) {
         intersects[0] = true;
-        bool intersectX = anotherBox.intersectsBox(boxX), intersectY = anotherBox.intersectsBox(boxY);
+        var intersectX = anotherBox.intersectsBox(boxX),
+            intersectY = anotherBox.intersectsBox(boxY);
         if (intersectX && intersectY) {
           continue;
         }
@@ -563,11 +601,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<three.Font> loadFont() async {
-    var fontJson = await textLoader.loadAsync("${kIsWeb ? '/' : ''}assets/fonts/Figerona-VF.ttf");
+    var fontJson = await textLoader.loadAsync(
+      "${kIsWeb ? '/' : ''}assets/fonts/Figerona-VF.ttf",
+    );
     return three.TYPRFont(fontJson);
   }
 
-  three.Object3D createText(String text, three.Vector3 position, [three.Vector3? rotation]) {
+  three.Object3D createText(
+    String text,
+    three.Vector3 position, [
+    three.Vector3? rotation,
+  ]) {
     var textGeo = three.TextGeometry(
       text,
       {"font": textFont, "size": 0.25, "height": 0.001},
@@ -588,48 +632,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return textMesh;
   }
 
-  three.Object3D create3DObject({
-    required double width,
-    required double length,
-    three.Vector3? position,
-    three.Vector3? rotation,
-    double? height,
-    Color? color,
-    three.Texture? texture,
-    bool textureRepeat = false,
-    double countRepeat = 10,
-    bool castShadow = false,
-  }) {
-    if (texture != null && textureRepeat == true) {
-      texture
-        ..wrapS = three.RepeatWrapping
-        ..wrapT = three.RepeatWrapping
-        ..repeat.set(countRepeat, countRepeat);
-    }
-    final params = {
-      "color": three.Color.setRGB255(
-        color?.red ?? 255,
-        color?.green ?? 255,
-        color?.blue ?? 255,
-      ),
-      if (texture != null) "map": texture
-    };
-
-    final three.BufferGeometry geometry =
-        height == null ? three.PlaneGeometry(width, length) : three.BoxGeometry(width, length, height);
-    return three.Mesh(
-      geometry,
-      castShadow ? three.MeshPhongMaterial(params) : three.MeshBasicMaterial(params),
-    )
-      ..rotation.x = rotation?.x ?? 0
-      ..rotation.y = rotation?.y ?? 0
-      ..rotation.z = rotation?.z ?? 0
-      ..position.x = position?.x ?? 0
-      ..position.y = position?.y ?? 0
-      ..position.z = (position?.z ?? 0) + ((height ?? 0) / 2)
-      ..autoUpdate;
-  }
-
   animate() {
     if (!mounted || disposed) {
       return;
@@ -641,9 +643,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     render();
 
-    Future.delayed(const Duration(milliseconds: 15), () {
-      animate();
-    });
+    Future.delayed(const Duration(milliseconds: 10), animate);
   }
 
   @override
