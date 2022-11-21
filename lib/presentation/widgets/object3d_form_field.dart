@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:three_dart/three3d/core/index.dart';
 import 'package:web_app/domain/models/model3d.dart';
 import 'package:web_app/presentation/widgets/number_input_field.dart';
 import 'package:web_app/presentation/widgets/selector.dart';

@@ -1,9 +1,11 @@
 import 'dart:math';
 
 import 'package:equatable/equatable.dart';
-import 'package:flutter/widgets.dart';
-import 'package:three_dart/three_dart.dart' as three;
+import 'package:three_dart/three_dart.dart' hide Color;
+import 'package:three_dart/three3d/math/color.dart' as three;
+import 'dart:ui';
 
+export 'package:three_dart/three3d/core/index.dart';
 export 'package:three_dart/three3d/math/vector3.dart';
 
 enum Model3DType { box, cylinder, plane }
@@ -12,8 +14,8 @@ enum Model3DType { box, cylinder, plane }
 class Model3D extends Equatable {
   Model3D({
     this.name = '',
-    three.Vector3? position,
-    three.Vector3? rotation,
+    Vector3? position,
+    Vector3? rotation,
     this.width = 0,
     this.height = 0,
     this.length = 0,
@@ -24,22 +26,22 @@ class Model3D extends Equatable {
     this.randomColor = false,
     this.texture,
     this.textureRepeatCount,
-  })  : position = position ?? three.Vector3(),
-        rotation = rotation ?? three.Vector3();
+  })  : position = position ?? Vector3(),
+        rotation = rotation ?? Vector3();
 
   String name;
-  three.Vector3 position, rotation;
+  Vector3 position, rotation;
   double width, height, length;
   Model3DType type = Model3DType.box;
   Color color;
   bool castShadow, receiveShadow, randomColor;
-  three.Texture? texture;
+  Texture? texture;
   double? textureRepeatCount;
 
   Model3D clone({
     String? name,
-    three.Vector3? position,
-    three.Vector3? rotation,
+    Vector3? position,
+    Vector3? rotation,
     double? width,
     double? height,
     double? length,
@@ -48,7 +50,7 @@ class Model3D extends Equatable {
     Color? color,
     bool? castShadow,
     bool? receiveShadow,
-    three.Texture? texture,
+    Texture? texture,
     double? textureRepeatCount,
   }) {
     return Model3D(
@@ -68,12 +70,14 @@ class Model3D extends Equatable {
     );
   }
 
-  three.Object3D getObject3D() {
-    return three.Mesh(_getGeometry(), _getMaterial())
+  Object3D getObject3D() {
+    var mesh = Mesh(getGeometry(), getMaterial());
+    return mesh
       ..name = name
       ..receiveShadow = receiveShadow
       ..castShadow = castShadow
-      ..rotation.x = type == Model3DType.plane ? rotation.x : rotation.x + pi / 2
+      ..rotation.x =
+          type == Model3DType.plane ? rotation.x : rotation.x + pi / 2
       ..rotation.y = rotation.y
       ..rotation.z = rotation.z
       ..position.x = position.x
@@ -81,32 +85,42 @@ class Model3D extends Equatable {
       ..position.z = position.z + height / 2;
   }
 
-  three.BufferGeometry _getGeometry() {
+  BufferGeometry getGeometry() {
     switch (type) {
       case Model3DType.box:
-        return three.BoxGeometry(width, height, length);
+        return BoxGeometry(width, height, length);
       case Model3DType.cylinder:
-        return three.CylinderGeometry(width, length, height, 100);
+        return CylinderGeometry(width, length, height, 100);
       case Model3DType.plane:
-        return three.PlaneGeometry(width, length);
+        return PlaneGeometry(width, length);
       default:
-        return three.BoxGeometry(width, length, height);
+        return BoxGeometry(width, height, length);
     }
   }
 
-  three.Material _getMaterial() {
+  Material getMaterial() {
     if (randomColor) _setRandomColor();
     if (texture != null && textureRepeatCount != null) {
       texture!
-        ..wrapS = three.RepeatWrapping
-        ..wrapT = three.RepeatWrapping
+        ..wrapS = RepeatWrapping
+        ..wrapT = RepeatWrapping
         ..repeat.set(textureRepeatCount!, textureRepeatCount!);
     }
-    return three.MeshPhongMaterial({
+    var params = {
       "color": three.Color.setRGB255(color.red, color.green, color.blue),
       "transparent": true,
       if (texture != null) "map": texture,
-    });
+      "polygonOffset": true,
+      "polygonOffsetFactor": 1,
+      "polygonOffsetUnits": 1,
+    };
+
+    switch (type) {
+      case Model3DType.plane:
+        return MeshBasicMaterial(params);
+      default:
+        return MeshStandardMaterial(params);
+    }
   }
 
   void _setRandomColor() {
@@ -114,7 +128,7 @@ class Model3D extends Equatable {
   }
 
   int _randomInt() {
-    return (three.Math.random() * 255).toInt();
+    return (Math.random() * 255).toInt();
   }
 
   @override
