@@ -49,56 +49,60 @@ class TruckContainer3D extends Model3D with Outline3D {
         .clone(
             name: 'truckBottom',
             width: length,
+            height: 0.001,
             length: width,
-            position: position,
-            rotation: Vector3(rotX, rotY, rotZ + pi / 2))
+            rotation: Vector3(0, 0, pi / 2))
         .getObject3D();
     truckFront = common
         .clone(
             name: 'truckFront',
             width: width,
             length: height,
-            position: Vector3(posX, posY + length / 2, posZ + height / 2),
-            rotation: Vector3(rotX + pi / 2, rotY, rotZ))
+            position: Vector3(0, length / 2, height / 2),
+            rotation: Vector3(pi / 2, 0, 0))
         .getObject3D();
     truckRight = common
         .clone(
             name: 'truckRight',
             width: length,
             length: height,
-            position: Vector3(posX + width / 2, posY, posZ + height / 2),
-            rotation: Vector3(rotX + pi / 2, rotY - pi / 2, rotZ))
+            position: Vector3(width / 2, 0, height / 2),
+            rotation: Vector3(pi / 2, -pi / 2, 0))
         .getObject3D();
     truckLeft = common
         .clone(
             name: 'truckLeft',
             width: length,
             length: height,
-            position: Vector3(posX - width / 2, posY, posZ + height / 2),
-            rotation: Vector3(rotX + pi / 2, rotY + pi / 2, rotZ))
+            position: Vector3(-width / 2, 0, height / 2),
+            rotation: Vector3(pi / 2, pi / 2, 0))
         .getObject3D();
     truckBack = common
         .clone(
             name: 'truckBack',
             width: width,
             length: height,
-            position: Vector3(posX, posY - length / 2, posZ + height / 2),
-            rotation: Vector3(rotX + pi / 2, rotY + pi, rotZ))
+            position: Vector3(0, -length / 2, height / 2),
+            rotation: Vector3(pi / 2, pi, 0))
         .getObject3D();
     truckRoof = common
         .clone(
             name: 'truckRoof',
             width: length,
             length: width,
-            position: Vector3(posX, posY, posZ + height + 0.000001),
-            rotation: Vector3(rotX + pi, rotY, rotZ + pi / 2))
+            position: Vector3(0, 0, height + 0.001 + 0.000001),
+            rotation: Vector3(pi, 0, pi / 2))
         .getObject3D();
 
     for (var side in sides) {
       var outline = getOutline(side);
       truck.add(outline);
     }
-
-    return truck..addAll(sides);
+    return truck
+      ..addAll(sides)
+      ..position = position
+      ..rotation.x = rotation.x
+      ..rotation.y = rotation.y
+      ..rotation.z = rotation.z;
   }
 }

@@ -322,9 +322,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initPage() {
     final aspectRatio = width / height;
 
+    var fogColor = three.Color.setRGB255(230, 255, 255);
+
     scene = three.Scene()
-      ..background = three.Color.setRGB255(200, 255, 255)
-      ..rotateX(-pi / 2);
+      ..rotateX(-pi / 2)
+      ..background = fogColor
+      ..fog = three.Fog(fogColor, 20, 70);
 
     camera = three.PerspectiveCamera(45, aspectRatio, 0.1, 1000)
       ..position.set(45, 30, 60)
@@ -402,7 +405,6 @@ class _HomeScreenState extends State<HomeScreen> {
     var texts = [textWidth, textLength, textHeight, textZeroLH, textZeroW];
 
     var box1 = Model3D(
-          name: 'draggable-1',
           width: 0.2,
           length: 1,
           height: 1,
@@ -410,7 +412,6 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.amber,
         ).getObject3D(),
         box2 = Model3D(
-          name: 'draggable-2',
           width: 1.5,
           length: 1.5,
           height: 1.5,
@@ -418,7 +419,6 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.redAccent,
         ).getObject3D(),
         box3 = Model3D(
-          name: 'draggable-3',
           width: 1.1,
           length: 1.2,
           height: 1.5,
@@ -426,7 +426,6 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.purple,
         ).getObject3D(),
         box4 = Model3D(
-          name: 'draggable-4',
           width: 2,
           length: 1.5,
           height: 1.5,
@@ -434,7 +433,6 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.cyan,
         ).getObject3D(),
         box5 = Model3D(
-          name: 'draggable-5',
           width: 1.5,
           length: 1.5,
           height: 1.25,
@@ -442,7 +440,6 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.blue.shade400,
         ).getObject3D(),
         box6 = Model3D(
-          name: 'draggable-6',
           width: 0.5,
           length: 0.75,
           height: 0.5,
@@ -450,7 +447,6 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.pink.shade200,
         ).getObject3D(),
         box7 = Model3D(
-          name: 'draggable-7',
           width: 1,
           length: 1,
           height: 2,
@@ -458,7 +454,6 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.tealAccent,
         ).getObject3D(),
         box8 = Model3D(
-          name: 'draggable-8',
           width: 1,
           length: 1,
           height: 1,
@@ -466,7 +461,6 @@ class _HomeScreenState extends State<HomeScreen> {
           color: Colors.brown.shade600,
         ).getObject3D(),
         box9 = Model3D(
-          name: 'draggable-9',
           width: 1,
           length: 1,
           height: 4,
@@ -558,6 +552,9 @@ class _HomeScreenState extends State<HomeScreen> {
             intersectingRoofs[0].object.geometry?.type == 'CylinderGeometry';
         var indexSide =
             (intersectingRoofs[0].faceIndex / (isCylinder ? 100 : 2)).floor();
+        if (intersectingRoofs[0].object.name == 'truckBottom') {
+          dz += intersectingRoofs[0].object.position.z;
+        }
         if (indexSide == 2) {
           var target = intersectingRoofs[0].object;
           var object = draggableObjects

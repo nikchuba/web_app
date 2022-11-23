@@ -9,7 +9,7 @@ import 'outline_3d.dart';
 enum Model3DType { box, cylinder, plane }
 
 // ignore: must_be_immutable
-class Model3D extends Equatable with Outline3D{
+class Model3D extends Equatable with Outline3D {
   Model3D({
     this.name = '',
     three.Vector3? position,
@@ -71,9 +71,10 @@ class Model3D extends Equatable with Outline3D{
   three.Object3D getObject3D() {
     if (type != Model3DType.plane) {
       var group = three.Group();
-      var mesh = three.Mesh(getGeometry(), getMaterial())..name = '$name-mesh';
-      var frame = getOutline(mesh);
-      group.addAll([mesh, frame]);
+      var mesh = three.Mesh(getGeometry(), getMaterial())
+        ..name = name.isNotEmpty ? '$name-mesh' : 'mesh';
+      var outline = getOutline(mesh);
+      group.addAll([mesh, outline]);
       return group
         ..name = name
         ..receiveShadow = receiveShadow
