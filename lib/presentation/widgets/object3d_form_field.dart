@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:web_app/domain/models/model3d.dart';
+import 'package:web_app/domain/models/3dmodels/model_3d.dart';
 import 'package:web_app/presentation/widgets/number_input_field.dart';
 import 'package:web_app/presentation/widgets/selector.dart';
+import 'package:three_dart/three_dart.dart';
 
 class Object3DFormField extends StatefulWidget {
   const Object3DFormField({

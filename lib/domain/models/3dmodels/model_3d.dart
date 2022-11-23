@@ -1,21 +1,19 @@
+import 'dart:ui';
 import 'dart:math';
 
 import 'package:equatable/equatable.dart';
-import 'package:three_dart/three_dart.dart' hide Color;
-import 'package:three_dart/three3d/math/color.dart' as three;
-import 'dart:ui';
+import 'package:three_dart/three_dart.dart' as three;
 
-export 'package:three_dart/three3d/core/index.dart';
-export 'package:three_dart/three3d/math/vector3.dart';
+import 'outline_3d.dart';
 
 enum Model3DType { box, cylinder, plane }
 
 // ignore: must_be_immutable
-class Model3D extends Equatable {
+class Model3D extends Equatable with Outline3D{
   Model3D({
     this.name = '',
-    Vector3? position,
-    Vector3? rotation,
+    three.Vector3? position,
+    three.Vector3? rotation,
     this.width = 0,
     this.height = 0,
     this.length = 0,
@@ -26,22 +24,22 @@ class Model3D extends Equatable {
     this.randomColor = false,
     this.texture,
     this.textureRepeatCount,
-  })  : position = position ?? Vector3(),
-        rotation = rotation ?? Vector3();
+  })  : position = position ?? three.Vector3(),
+        rotation = rotation ?? three.Vector3();
 
   String name;
-  Vector3 position, rotation;
+  three.Vector3 position, rotation;
   double width, height, length;
   Model3DType type = Model3DType.box;
   Color color;
   bool castShadow, receiveShadow, randomColor;
-  Texture? texture;
+  three.Texture? texture;
   double? textureRepeatCount;
 
   Model3D clone({
     String? name,
-    Vector3? position,
-    Vector3? rotation,
+    three.Vector3? position,
+    three.Vector3? rotation,
     double? width,
     double? height,
     double? length,
@@ -50,7 +48,7 @@ class Model3D extends Equatable {
     Color? color,
     bool? castShadow,
     bool? receiveShadow,
-    Texture? texture,
+    three.Texture? texture,
     double? textureRepeatCount,
   }) {
     return Model3D(
@@ -70,8 +68,25 @@ class Model3D extends Equatable {
     );
   }
 
-  Object3D getObject3D() {
-    var mesh = Mesh(getGeometry(), getMaterial());
+  three.Object3D getObject3D() {
+    if (type != Model3DType.plane) {
+      var group = three.Group();
+      var mesh = three.Mesh(getGeometry(), getMaterial())..name = '$name-mesh';
+      var frame = getOutline(mesh);
+      group.addAll([mesh, frame]);
+      return group
+        ..name = name
+        ..receiveShadow = receiveShadow
+        ..castShadow = castShadow
+        ..rotation.x =
+            type == Model3DType.plane ? rotation.x : rotation.x + pi / 2
+        ..rotation.y = rotation.y
+        ..rotation.z = rotation.z
+        ..position.x = position.x
+        ..position.y = position.y
+        ..position.z = position.z + height / 2;
+    }
+    var mesh = three.Mesh(getGeometry(), getMaterial());
     return mesh
       ..name = name
       ..receiveShadow = receiveShadow
@@ -85,41 +100,37 @@ class Model3D extends Equatable {
       ..position.z = position.z + height / 2;
   }
 
-  BufferGeometry getGeometry() {
+  three.BufferGeometry getGeometry() {
     switch (type) {
       case Model3DType.box:
-        return BoxGeometry(width, height, length);
+        return three.BoxGeometry(width, height, length);
       case Model3DType.cylinder:
-        return CylinderGeometry(width, length, height, 100);
+        return three.CylinderGeometry(width, length, height, 100);
       case Model3DType.plane:
-        return PlaneGeometry(width, length);
+        return three.PlaneGeometry(width, length);
       default:
-        return BoxGeometry(width, height, length);
+        return three.BoxGeometry(width, height, length);
     }
   }
 
-  Material getMaterial() {
+  three.Material getMaterial() {
     if (randomColor) _setRandomColor();
     if (texture != null && textureRepeatCount != null) {
       texture!
-        ..wrapS = RepeatWrapping
-        ..wrapT = RepeatWrapping
+        ..wrapS = three.RepeatWrapping
+        ..wrapT = three.RepeatWrapping
         ..repeat.set(textureRepeatCount!, textureRepeatCount!);
     }
     var params = {
       "color": three.Color.setRGB255(color.red, color.green, color.blue),
-      "transparent": true,
       if (texture != null) "map": texture,
-      "polygonOffset": true,
-      "polygonOffsetFactor": 1,
-      "polygonOffsetUnits": 1,
     };
 
     switch (type) {
       case Model3DType.plane:
-        return MeshBasicMaterial(params);
+        return three.MeshBasicMaterial(params);
       default:
-        return MeshStandardMaterial(params);
+        return three.MeshStandardMaterial(params);
     }
   }
 
@@ -128,7 +139,7 @@ class Model3D extends Equatable {
   }
 
   int _randomInt() {
-    return (Math.random() * 255).toInt();
+    return (three.Math.random() * 255).toInt();
   }
 
   @override
