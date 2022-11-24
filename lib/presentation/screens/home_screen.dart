@@ -67,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
       bevelSize = 1.5;
 
   final globalKey = GlobalKey<three_jsm.DomLikeListenableState>();
-  late three_jsm.OrbitControls controls;
+  late three_jsm.OrbitControls orbitControls;
   late three.Raycaster raycasterObjects, raycasterRoofs;
   late three.Font textFont;
 
@@ -184,10 +184,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               right: 20,
                               child: Center(
                                 child: ZoomButtons(
-                                  zoomIn: () => controls
+                                  zoomIn: () => orbitControls
                                     ..dollyIn(0.9)
                                     ..update(),
-                                  zoomOut: () => controls
+                                  zoomOut: () => orbitControls
                                     ..dollyIn(1.1)
                                     ..update(),
                                 ),
@@ -333,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ..position.set(45, 30, 60)
       ..lookAt(scene.position);
 
-    controls = three_jsm.OrbitControls(camera, globalKey)
+    orbitControls = three_jsm.OrbitControls(camera, globalKey)
       ..maxPolarAngle = pi / 2.2
       ..maxDistance = 60
       ..minDistance = 5
@@ -490,7 +490,7 @@ class _HomeScreenState extends State<HomeScreen> {
     draggableMeshes = draggableObjects.map((e) => e.children[0]).toList();
     boundaryObjects = [...draggableMeshes, ...truckContainer.sides];
 
-    controls.domElement
+    orbitControls.domElement
       ..addEventListener(
         'pointerdown',
         (event) {
@@ -507,7 +507,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child.material?.color = three.Color(0x00ff00);
             }
 
-            controls
+            orbitControls
               ..enabled = false
               ..domElement.addEventListener('pointermove', dragObject);
           }
@@ -520,7 +520,7 @@ class _HomeScreenState extends State<HomeScreen> {
             targetObject.children[0].material?.color = targetColor;
             targetObject.children[1].material?.color = three.Color(0x000000);
           }
-          controls
+          orbitControls
             ..domElement.removeEventListener('pointermove', dragObject)
             ..enabled = true;
         },
@@ -536,17 +536,16 @@ class _HomeScreenState extends State<HomeScreen> {
     var intersectingObjects =
         raycasterObjects.intersectObject(ground.children[0], false);
     if (intersectingObjects.isNotEmpty) {
-      collisionObjects = ([...boundaryObjects]..remove(targetMesh));
       var pointOnGround = intersectingObjects[0].point;
       var dx = pointOnGround.x,
           dy = -pointOnGround.z,
           dz = targetObject.children[0].geometry?.parameters?['height'] / 2 +
               0.000001;
+      collisionObjects = ([...boundaryObjects]..remove(targetMesh));
       raycasterRoofs.setFromCamera(point, camera);
-      var intersectingRoofs = raycasterRoofs.intersectObjects(
-        collisionObjects,
-        true,
-      );
+      var intersectingRoofs =
+          raycasterRoofs.intersectObjects(collisionObjects, true);
+
       if (intersectingRoofs.isNotEmpty) {
         var isCylinder =
             intersectingRoofs[0].object.geometry?.type == 'CylinderGeometry';
@@ -573,62 +572,47 @@ class _HomeScreenState extends State<HomeScreen> {
           dz += pos.z + 0.5 * height;
         }
       }
-
-      var nextObject = targetObject.clone()
-            ..position.set(dx, dy, dz)
-            ..visible = false,
-          nextObjectX = targetObject.clone()
-            ..position.setX(dx)
-            ..position.setZ(dz)
-            ..visible = false,
-          nextObjectY = targetObject.clone()
-            ..position.setY(dy)
-            ..position.setZ(dz)
-            ..visible = false;
-
-      scene.addAll([nextObject, nextObjectX, nextObjectY]);
-      var pos = getNewPos(nextObject, nextObjectX, nextObjectY);
-      scene.removeList([nextObject, nextObjectX, nextObjectY]);
-      if (pos != null) {
-        targetObject.position = pos;
-      }
+      var common = targetObject.clone()..visible = false;
+      var nextObjectX = common.clone(), nextObjectY = common.clone();
+      nextObjectX.position
+        ..x = dx
+        ..z = dz;
+      nextObjectY.position
+        ..y = dy
+        ..z = dz;
+      scene.addAll([nextObjectX, nextObjectY]);
+      setNewPos(nextObjectX, nextObjectY, three.Vector3(dx, dy, dz));
+      scene.removeList([nextObjectX, nextObjectY]);
     }
   }
 
-  three.Vector3? getNewPos(
-    three.Object3D objectXY,
-    three.Object3D objectX,
-    three.Object3D objectY,
+  void setNewPos(
+    three.Object3D objX,
+    three.Object3D objY,
+    three.Vector3 pos,
   ) {
-    var intersects = List.generate(3, (_) => false);
-    var boxXY = getBox3(objectXY),
-        boxX = getBox3(objectX),
-        boxY = getBox3(objectY);
-    for (var key = 0; key < collisionObjects.length; key++) {
-      var item = collisionObjects[key];
+    var notIntersects = List.generate(2, (_) => true);
+    var boxX = getBox3(objX), boxY = getBox3(objY);
+    for (var item in collisionObjects) {
       var anotherBox = getBox3(item);
-      if (anotherBox.intersectsBox(boxXY)) {
-        intersects[0] = true;
-        var intersectX = anotherBox.intersectsBox(boxX),
-            intersectY = anotherBox.intersectsBox(boxY);
-        if (intersectX && intersectY) {
-          continue;
-        }
-        intersects[intersectX ? 1 : 2] = true;
-      }
-    }
+      var intersectX = notIntersects[0] ? anotherBox.intersectsBox(boxX) : null,
+          intersectY = notIntersects[1] ? anotherBox.intersectsBox(boxY) : null;
 
-    if (!intersects[0]) {
-      return objectXY.position;
-    }
-    if (!intersects[1]) {
-      return objectX.position;
-    }
-    if (!intersects[2]) {
-      return objectY.position;
-    }
+      if (intersectX == true) notIntersects[0] = false;
 
-    return null;
+      if (intersectY == true) notIntersects[1] = false;
+
+      if (notIntersects.every((e) => !e)) return;
+    }
+    if (notIntersects[0] && notIntersects[1]) {
+      targetObject.position = pos;
+      return;
+    }
+    if (notIntersects[0]) {
+      targetObject.position = objX.position;
+    } else if (notIntersects[1]) {
+      targetObject.position = objY.position;
+    }
   }
 
   three.Box3 getBox3(three.Object3D object) {
