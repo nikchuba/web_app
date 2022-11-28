@@ -39,8 +39,6 @@ class TruckContainer3D extends Model3D with Outline3D {
 
   @override
   Object3D getObject3D() {
-    var posX = position.x, posY = position.y, posZ = position.z;
-    var rotX = rotation.x, rotY = rotation.y, rotZ = rotation.z;
     var truck = Group()..name = name;
 
     var common = Model3D(texture: texture, type: Model3DType.plane);
@@ -49,7 +47,7 @@ class TruckContainer3D extends Model3D with Outline3D {
         .clone(
             name: 'truckBottom',
             width: length,
-            height: 0.001,
+            height: 1e-3,
             length: width,
             rotation: Vector3(0, 0, pi / 2))
         .getObject3D();
@@ -90,7 +88,7 @@ class TruckContainer3D extends Model3D with Outline3D {
             name: 'truckRoof',
             width: length,
             length: width,
-            position: Vector3(0, 0, height + 0.001 + 0.000001),
+            position: Vector3(0, 0, height + 1e-3 + 1e-6),
             rotation: Vector3(pi, 0, pi / 2))
         .getObject3D();
 
@@ -101,8 +99,6 @@ class TruckContainer3D extends Model3D with Outline3D {
     return truck
       ..addAll(sides)
       ..position = position
-      ..rotation.x = rotation.x
-      ..rotation.y = rotation.y
-      ..rotation.z = rotation.z;
+      ..rotation.set(rotation.x, rotation.y, rotation.z);
   }
 }

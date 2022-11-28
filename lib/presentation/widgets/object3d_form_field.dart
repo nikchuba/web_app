@@ -10,7 +10,7 @@ class Object3DFormField extends StatefulWidget {
     required this.callback,
   }) : super(key: key);
 
-  final Function(Object3D) callback;
+  final void Function(Object3D) callback;
 
   @override
   State<Object3DFormField> createState() => _Object3DFormFieldState();

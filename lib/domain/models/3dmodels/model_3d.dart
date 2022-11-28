@@ -68,10 +68,33 @@ class Model3D extends Equatable with Outline3D {
     );
   }
 
+  factory Model3D.fromGroup(three.Object3D group) {
+    var object = group.children[0];
+    var params = object.geometry!.parameters!;
+    var color = object.material.color;
+    var pos = group.position;
+    var rot = group.rotation;
+
+    return Model3D(
+      width: params['width'],
+      length: params['depth'],
+      height: params['height'],
+      position: three.Vector3(pos.x, pos.y, pos.z - params['height']/ 2),
+      rotation: three.Vector3(rot.x - pi / 2, rot.y, rot.z),
+      color: Color.fromRGBO(
+        (color.r * 255).toInt(),
+        (color.g * 255).toInt(),
+        (color.b * 255).toInt(),
+        1.0,
+      ),
+    );
+  }
+
   three.Object3D getObject3D() {
     if (type != Model3DType.plane) {
-      var group = three.Group();
-      var mesh = three.Mesh(getGeometry(), getMaterial())
+      var geometry = getGeometry();
+      var group = three.Group()..geometry = geometry;
+      var mesh = three.Mesh(geometry, getMaterial())
         ..name = name.isNotEmpty ? '$name-mesh' : 'mesh';
       var outline = getOutline(mesh);
       group.addAll([mesh, outline]);
@@ -79,8 +102,7 @@ class Model3D extends Equatable with Outline3D {
         ..name = name
         ..receiveShadow = receiveShadow
         ..castShadow = castShadow
-        ..rotation.x =
-            type == Model3DType.plane ? rotation.x : rotation.x + pi / 2
+        ..rotation.x = rotation.x + pi / 2
         ..rotation.y = rotation.y
         ..rotation.z = rotation.z
         ..position.x = position.x

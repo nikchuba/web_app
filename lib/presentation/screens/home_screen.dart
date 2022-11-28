@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide PointerEvent;
+import 'package:flutter/services.dart';
 import 'package:flutter_gl/flutter_gl.dart';
 import 'package:three_dart/three_dart.dart' as three;
 import 'package:web_app/domain/models/3dmodels/ground_3d.dart';
 
 import 'package:web_app/domain/models/3dmodels/model_3d.dart';
 import 'package:web_app/domain/models/3dmodels/truck_container_3d.dart';
+import 'package:web_app/presentation/widgets/context_menu.dart';
 import 'package:web_app/presentation/widgets/zoom_buttons.dart';
 import 'package:three_dart_jsm/three_dart_jsm.dart' as three_jsm;
 
@@ -23,10 +24,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final truckSize = three.Vector3(2.43, 12.19, 2.59);
+  final truckSize = three.Vector3(2.44, 12.2, 2.6);
   late FlutterGlPlugin three3dRender;
   three.WebGLRenderer? renderer;
   late three.Loader textureLoader, textLoader;
+  late ContextMenu contextMenu;
+  late TextEditingController controller;
 
   late double width, height;
 
@@ -43,11 +46,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool disposed = false;
 
   late three.Object3D ground;
-  late List<three.Object3D> draggableObjects,
+  late List<three.Object3D> draggableGroups,
       draggableMeshes,
       boundaryObjects,
       collisionObjects;
-  late three.Object3D targetObject, targetMesh;
+  late three.Object3D targetGroup, targetMesh;
+  three.Color? targetColor;
 
   late three.Texture groundTexture, containerTexture;
 
@@ -68,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final globalKey = GlobalKey<three_jsm.DomLikeListenableState>();
   late three_jsm.OrbitControls orbitControls;
-  late three.Raycaster raycasterObjects, raycasterRoofs;
+  late three.Raycaster rayObjects, rayRoofs;
   late three.Font textFont;
 
   // Platform messages are asynchronous, so we initialize in an async method.
@@ -116,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final mqd = MediaQuery.of(context);
 
     screenSize = mqd.size;
-    devicePixelRatio = mqd.devicePixelRatio;
+    devicePixelRatio = screenSize!.width / screenSize!.height;
 
     await initPlatformState();
   }
@@ -143,6 +147,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void initState() {
+    controller = TextEditingController();
+    contextMenu = ContextMenu.init(context);
     outlineMode.addListener(() {
       for (var object in scene.children) {
         setOutline(outlineMode.value, object);
@@ -153,109 +159,172 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: three_jsm.DomLikeListenable(
-          key: globalKey,
-          builder: (_) {
-            initSize(context);
-            return Container(
-              width: width,
-              height: height,
-              color: Colors.black,
-              child: ValueListenableBuilder(
-                valueListenable: loaded,
-                builder: (context, value, child) {
-                  return value
-                      ? Stack(
-                          children: [
-                            kIsWeb
-                                ? HtmlElementView(
-                                    viewType:
-                                        three3dRender.textureId!.toString(),
-                                  )
-                                : Texture(
-                                    textureId: three3dRender.textureId!,
-                                    filterQuality: FilterQuality.none,
-                                  ),
-                            Positioned(
-                              top: 0,
-                              bottom: 100,
-                              right: 20,
-                              child: Center(
-                                child: ZoomButtons(
-                                  zoomIn: () => orbitControls
-                                    ..dollyIn(0.9)
-                                    ..update(),
-                                  zoomOut: () => orbitControls
-                                    ..dollyIn(1.1)
-                                    ..update(),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 20,
-                              right: 20,
-                              child: Center(
-                                child: TextButton(
-                                  style: TextButton.styleFrom(
-                                    fixedSize: const Size(150, 50),
-                                    backgroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(100),
+    return NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (_) {
+        return true;
+      },
+      child: SizeChangedLayoutNotifier(
+        child: Scaffold(
+          body: SafeArea(
+            child: three_jsm.DomLikeListenable(
+              key: globalKey,
+              builder: (_) {
+                initSize(context);
+                return Container(
+                  width: width,
+                  height: height,
+                  color: Colors.black,
+                  child: ValueListenableBuilder(
+                    valueListenable: loaded,
+                    builder: (context, value, child) {
+                      return value
+                          ? GestureDetector(
+                              onLongPressStart: (event) {
+                                var point = Point<double>(
+                                    event.globalPosition.dx,
+                                    event.globalPosition.dy);
+                                checkTapOnTarget(point, callBack: (target) {
+                                  removeDragCallback();
+                                  HapticFeedback.vibrate();
+                                  targetMesh = target;
+                                  targetGroup = targetMesh.parent!;
+                                  var geometry = targetGroup.geometry;
+                                  var params = geometry?.parameters;
+                                  var paramsList = <double>[
+                                    params?['width'],
+                                    params?['depth'],
+                                    params?['height']
+                                  ];
+                                  var controllers = [
+                                    ...paramsList.map((e) =>
+                                        TextEditingController(
+                                            text: '${1000 * e}')),
+                                  ];
+
+                                  var items = {
+                                    'Ширина(мм)': controllers[0],
+                                    'Длина(мм)': controllers[1],
+                                    'Высота(мм)': controllers[2],
+                                  };
+
+                                  contextMenu.showObjectInfo(
+                                    origin: point,
+                                    items: items,
+                                    callback: (items) {
+                                      var newGroup =
+                                          Model3D.fromGroup(targetGroup)
+                                              .clone(
+                                                width: double.parse(items[0]) /
+                                                    1000,
+                                                length: double.parse(items[1]) /
+                                                    1000,
+                                                height: double.parse(items[2]) /
+                                                    1000,
+                                              )
+                                              .getObject3D();
+                                      removeDragGroup(targetGroup);
+                                      addDragGroup(newGroup);
+                                    },
+                                  );
+                                });
+                              },
+                              child: Stack(
+                                children: [
+                                  kIsWeb
+                                      ? HtmlElementView(
+                                          viewType: three3dRender.textureId!
+                                              .toString(),
+                                        )
+                                      : Texture(
+                                          textureId: three3dRender.textureId!,
+                                          filterQuality: FilterQuality.none,
+                                        ),
+                                  Positioned(
+                                    top: 0,
+                                    bottom: 100,
+                                    right: 20,
+                                    child: Center(
+                                      child: ZoomButtons(
+                                        zoomIn: () => orbitControls
+                                          ..dollyIn(0.9)
+                                          ..update(),
+                                        zoomOut: () => orbitControls
+                                          ..dollyIn(1.1)
+                                          ..update(),
+                                      ),
                                     ),
                                   ),
-                                  onPressed: switchOutlineMode,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Text('Окружение'),
-                                      const SizedBox(width: 10),
-                                      ValueListenableBuilder(
-                                        valueListenable: outlineMode,
-                                        builder: (context, value, child) {
-                                          return SizedBox(
-                                            width: 30,
-                                            child: Switch(
-                                              focusColor: Colors.transparent,
-                                              hoverColor: Colors.transparent,
-                                              overlayColor:
-                                                  const MaterialStatePropertyAll(
-                                                      Colors.transparent),
-                                              value: !value,
-                                              onChanged: (_) =>
-                                                  switchOutlineMode(),
+                                  Positioned(
+                                    top: 20,
+                                    right: 20,
+                                    child: Center(
+                                      child: TextButton(
+                                        style: TextButton.styleFrom(
+                                          fixedSize: const Size(150, 50),
+                                          backgroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(100),
+                                          ),
+                                        ),
+                                        onPressed: switchOutlineMode,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Text('Окружение'),
+                                            const SizedBox(width: 10),
+                                            ValueListenableBuilder(
+                                              valueListenable: outlineMode,
+                                              builder: (context, value, child) {
+                                                return SizedBox(
+                                                  width: 30,
+                                                  child: Switch(
+                                                    focusColor:
+                                                        Colors.transparent,
+                                                    hoverColor:
+                                                        Colors.transparent,
+                                                    overlayColor:
+                                                        const MaterialStatePropertyAll(
+                                                            Colors.transparent),
+                                                    value: !value,
+                                                    onChanged: (_) =>
+                                                        switchOutlineMode(),
+                                                  ),
+                                                );
+                                              },
                                             ),
-                                          );
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 20,
+                                    left: 20,
+                                    child: Center(
+                                      child: Object3DFormField(
+                                        callback: (object) {
+                                          setOutline(outlineMode.value, object);
+                                          draggableGroups.add(object);
+                                          draggableMeshes
+                                              .add(object.children[0]);
+                                          boundaryObjects
+                                              .add(object.children[0]);
+                                          scene.add(object);
                                         },
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ),
-                            Positioned(
-                              top: 20,
-                              left: 20,
-                              child: Center(
-                                child: Object3DFormField(
-                                  callback: (object) {
-                                    setOutline(outlineMode.value, object);
-                                    draggableObjects.add(object);
-                                    draggableMeshes.add(object.children[0]);
-                                    boundaryObjects.add(object.children[0]);
-                                    scene.add(object);
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : const Center(child: CircularProgressIndicator());
-                },
-              ),
-            );
-          },
+                            )
+                          : const Center(child: CircularProgressIndicator());
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -308,6 +377,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void addDragGroup(three.Object3D group) {
+    setOutline(outlineMode.value, group);
+    draggableGroups.add(group);
+    draggableMeshes.add(group.children[0]);
+    boundaryObjects.add(group.children[0]);
+    scene.add(group);
+  }
+
+  void removeDragGroup(three.Object3D group) {
+    draggableGroups.remove(group);
+    draggableMeshes.remove(group.children[0]);
+    boundaryObjects.remove(group.children[0]);
+    scene.remove(group);
+  }
+
   void createGround() {
     const groundSize = 100.0;
     ground = Ground3D(
@@ -320,6 +404,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void initPage() {
+    three.Cache.enabled = true;
     final aspectRatio = width / height;
 
     var fogColor = three.Color.setRGB255(230, 255, 255);
@@ -341,40 +426,34 @@ class _HomeScreenState extends State<HomeScreen> {
       ..dollyIn(0.3)
       ..update();
 
-    raycasterObjects = three.Raycaster();
-    raycasterRoofs = three.Raycaster();
+    rayObjects = three.Raycaster();
+    rayRoofs = three.Raycaster();
 
     createGround();
 
     var truckContainer = TruckContainer3D(
-      width: 2.43,
-      length: 12.19,
-      height: 2.59,
+      width: truckSize.x,
+      length: truckSize.y,
+      height: truckSize.z,
       texture: containerTexture,
     );
 
-    var textMaterial = three.LineBasicMaterial()
-      ..color = three.Color.setRGB255(0, 0, 0);
+    var textMaterial = three.LineBasicMaterial({"color": three.Color(0x000)});
     var linePointsLH = [
-          three.Vector3(truckSize.x, -truckSize.y / 2, 0),
-          three.Vector3(truckSize.x, truckSize.y / 2, 0),
-          three.Vector3(truckSize.x, truckSize.y / 2, truckSize.z),
+          three.Vector3(truckSize.x * 0.8, -truckSize.y / 2, 0),
+          three.Vector3(truckSize.x * 0.8, truckSize.y / 2, 0),
+          three.Vector3(truckSize.x * 0.8, truckSize.y / 2, truckSize.z),
         ],
         linePointsW = [
           three.Vector3(
-              -truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 2, 0),
-          three.Vector3(truckSize.x / 2, -truckSize.y / 2 - truckSize.x / 2, 0),
+              -truckSize.x / 2, -truckSize.y / 2 - truckSize.x * 0.3, 0),
+          three.Vector3(
+              truckSize.x / 2, -truckSize.y / 2 - truckSize.x * 0.3, 0),
         ];
     var lineGeometryLH = three.BufferGeometry().setFromPoints(linePointsLH),
         lineGeometryW = three.BufferGeometry().setFromPoints(linePointsW);
-    var lineLH = three.Line(
-          lineGeometryLH,
-          textMaterial,
-        ),
-        lineW = three.Line(
-          lineGeometryW,
-          textMaterial,
-        );
+    var lineLH = three.Line(lineGeometryLH, textMaterial),
+        lineW = three.Line(lineGeometryW, textMaterial);
     var lines = [lineLH, lineW];
 
     var textWidth = createText(
@@ -467,7 +546,7 @@ class _HomeScreenState extends State<HomeScreen> {
           position: three.Vector3(7, 4, 0),
           color: Colors.grey,
         ).getObject3D();
-    draggableObjects = [box1, box2, box3, box4, box5, box6, box7, box8, box9];
+    draggableGroups = [box1, box2, box3, box4, box5, box6, box7, box8, box9];
 
     var light = three.SpotLight(three.Color(0xffa95c), 1.0)
           ..position.x = 100
@@ -482,69 +561,74 @@ class _HomeScreenState extends State<HomeScreen> {
       ..add(truckContainer.getObject3D())
       ..addAll(lines)
       ..addAll(texts)
-      ..addAll(draggableObjects)
+      ..addAll(draggableGroups)
       ..addAll(lights);
 
-    three.Color? targetColor;
-
-    draggableMeshes = draggableObjects.map((e) => e.children[0]).toList();
+    draggableMeshes = draggableGroups.map((e) => e.children[0]).toList();
     boundaryObjects = [...draggableMeshes, ...truckContainer.sides];
 
     orbitControls.domElement
       ..addEventListener(
-        'pointerdown',
-        (event) {
-          final vector = pointToVector2(event);
-          raycasterObjects.setFromCamera(vector, camera);
-          var intersects =
-              raycasterObjects.intersectObjects(draggableMeshes, true);
-          if (intersects.isNotEmpty) {
-            targetMesh = intersects[0].object;
-            targetObject = draggableObjects
-                .firstWhere((object) => object.children.contains(targetMesh));
+        'touchstart',
+        (three_jsm.WebPointerEvent event) {
+          contextMenu.close();
+          var point = Point(event.clientX, event.clientY);
+          checkTapOnTarget(point, callBack: (target) {
+            targetMesh = target;
+            targetGroup = targetMesh.parent!;
             targetColor = targetMesh.material.color;
-            for (var child in targetObject.children) {
+            for (var child in targetGroup.children) {
               child.material?.color = three.Color(0x00ff00);
             }
 
             orbitControls
               ..enabled = false
-              ..domElement.addEventListener('pointermove', dragObject);
-          }
+              ..domElement.addEventListener('touchmove', dragObject);
+          });
         },
       )
-      ..addEventListener(
-        'pointerup',
-        (event) {
-          if (targetColor != null) {
-            targetObject.children[0].material?.color = targetColor;
-            targetObject.children[1].material?.color = three.Color(0x000000);
-          }
-          orbitControls
-            ..domElement.removeEventListener('pointermove', dragObject)
-            ..enabled = true;
-        },
-      );
+      ..addEventListener('touchend', (_) => removeDragCallback());
 
     loaded.value = true;
     animate();
   }
 
-  void dragObject(event) {
-    var point = pointToVector2(event);
-    raycasterObjects = three.Raycaster()..setFromCamera(point, camera);
+  void checkTapOnTarget(
+    Point<double> point, {
+    void Function(three.Object3D)? callBack,
+  }) {
+    var vector = pointToVector2(point);
+    rayObjects.setFromCamera(vector, camera);
+    var intersects = rayObjects.intersectObjects(draggableMeshes, true);
+    if (intersects.isNotEmpty) callBack?.call(intersects[0].object);
+  }
+
+  void removeDragCallback() {
+    if (targetColor != null) {
+      targetGroup.children[0].material?.color = targetColor;
+      targetGroup.children[1].material?.color = three.Color(0x000000);
+    }
+    orbitControls
+      ..domElement.removeEventListener('touchmove', dragObject)
+      ..enabled = true;
+  }
+
+  void dragObject(three_jsm.WebPointerEvent point) {
+    var vector = pointToVector2(
+      Point(point.clientX, point.clientY),
+    );
+    rayObjects = three.Raycaster()..setFromCamera(vector, camera);
     var intersectingObjects =
-        raycasterObjects.intersectObject(ground.children[0], false);
+        rayObjects.intersectObject(ground.children[0], false);
     if (intersectingObjects.isNotEmpty) {
       var pointOnGround = intersectingObjects[0].point;
       var dx = pointOnGround.x,
           dy = -pointOnGround.z,
-          dz = targetObject.children[0].geometry?.parameters?['height'] / 2 +
-              0.000001;
+          dz = targetGroup.children[0].geometry?.parameters?['height'] / 2 +
+              1e-6;
       collisionObjects = ([...boundaryObjects]..remove(targetMesh));
-      raycasterRoofs.setFromCamera(point, camera);
-      var intersectingRoofs =
-          raycasterRoofs.intersectObjects(collisionObjects, true);
+      rayRoofs.setFromCamera(vector, camera);
+      var intersectingRoofs = rayRoofs.intersectObjects(collisionObjects, true);
 
       if (intersectingRoofs.isNotEmpty) {
         var isCylinder =
@@ -556,9 +640,8 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         if (indexSide == 2) {
           var target = intersectingRoofs[0].object;
-          var object = draggableObjects
-              .firstWhere((object) => object.children.contains(target));
-          var pos = object.position;
+          var group = target.parent!;
+          var pos = group.position;
           var uv = intersectingRoofs[0].uv;
           var uvX = !isCylinder ? uv.x : uv.y;
           var uvY = !isCylinder ? uv.y : uv.x;
@@ -572,7 +655,7 @@ class _HomeScreenState extends State<HomeScreen> {
           dz += pos.z + 0.5 * height;
         }
       }
-      var common = targetObject.clone()..visible = false;
+      var common = targetGroup.clone()..visible = false;
       var nextObjectX = common.clone(), nextObjectY = common.clone();
       nextObjectX.position
         ..x = dx
@@ -605,13 +688,13 @@ class _HomeScreenState extends State<HomeScreen> {
       if (notIntersects.every((e) => !e)) return;
     }
     if (notIntersects[0] && notIntersects[1]) {
-      targetObject.position = pos;
+      targetGroup.position = pos;
       return;
     }
     if (notIntersects[0]) {
-      targetObject.position = objX.position;
+      targetGroup.position = objX.position;
     } else if (notIntersects[1]) {
-      targetObject.position = objY.position;
+      targetGroup.position = objY.position;
     }
   }
 
@@ -619,10 +702,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return three.Box3().setFromObject(object);
   }
 
-  three.Vector2 pointToVector2(three_jsm.WebPointerEvent point) {
+  three.Vector2 pointToVector2(Point<double> point) {
     return three.Vector2(
-      -(width / 2 - point.clientX) * 2 / width,
-      (height / 2 - point.clientY) * 2 / height,
+      -(width / 2 - point.x) * 2 / width,
+      (height / 2 - point.y) * 2 / height,
     );
   }
 
@@ -640,7 +723,7 @@ class _HomeScreenState extends State<HomeScreen> {
   ]) {
     var textGeo = three.TextGeometry(
       text,
-      {"font": textFont, "size": 0.25, "height": 0.001},
+      {"font": textFont, "size": 0.25, "height": 1e-3},
     );
 
     var material = three.MeshBasicMaterial({"color": 0x000000});
