@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:html';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -30,6 +31,8 @@ class _HomeScreenState extends State<HomeScreen> {
   late three.Loader textureLoader, textLoader;
   late ContextMenu contextMenu;
   late TextEditingController controller;
+
+  late String system;
 
   late double width, height;
 
@@ -120,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final mqd = MediaQuery.of(context);
 
     screenSize = mqd.size;
-    devicePixelRatio = screenSize!.width / screenSize!.height;
+    devicePixelRatio = mqd.devicePixelRatio;
 
     await initPlatformState();
   }
@@ -147,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void initState() {
+    system = getOSInsideWeb();
     controller = TextEditingController();
     contextMenu = ContextMenu.init(context);
     outlineMode.addListener(() {
@@ -157,10 +161,23 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
   }
 
+  String getOSInsideWeb() {
+    final userAgent = window.navigator.userAgent.toString().toLowerCase();
+    if (userAgent.contains("iphone")) return "ios";
+    if (userAgent.contains("ipad")) return "ios";
+    if (userAgent.contains("android")) return "Android";
+    return "Web";
+  }
+
   @override
   Widget build(BuildContext context) {
     return NotificationListener<SizeChangedLayoutNotification>(
       onNotification: (_) {
+        final mqd = MediaQuery.of(context);
+        width = mqd.size.width;
+        height = mqd.size.height;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
         return true;
       },
       child: SizeChangedLayoutNotifier(
@@ -179,55 +196,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (context, value, child) {
                       return value
                           ? GestureDetector(
-                              onLongPressStart: (event) {
-                                var point = Point<double>(
-                                    event.globalPosition.dx,
-                                    event.globalPosition.dy);
-                                checkTapOnTarget(point, callBack: (target) {
-                                  removeDragCallback();
-                                  HapticFeedback.vibrate();
-                                  targetMesh = target;
-                                  targetGroup = targetMesh.parent!;
-                                  var geometry = targetGroup.geometry;
-                                  var params = geometry?.parameters;
-                                  var paramsList = <double>[
-                                    params?['width'],
-                                    params?['depth'],
-                                    params?['height']
-                                  ];
-                                  var controllers = [
-                                    ...paramsList.map((e) =>
-                                        TextEditingController(
-                                            text: '${1000 * e}')),
-                                  ];
-
-                                  var items = {
-                                    'Ширина(мм)': controllers[0],
-                                    'Длина(мм)': controllers[1],
-                                    'Высота(мм)': controllers[2],
-                                  };
-
-                                  contextMenu.showObjectInfo(
-                                    origin: point,
-                                    items: items,
-                                    callback: (items) {
-                                      var newGroup =
-                                          Model3D.fromGroup(targetGroup)
-                                              .clone(
-                                                width: double.parse(items[0]) /
-                                                    1000,
-                                                length: double.parse(items[1]) /
-                                                    1000,
-                                                height: double.parse(items[2]) /
-                                                    1000,
-                                              )
-                                              .getObject3D();
-                                      removeDragGroup(targetGroup);
-                                      addDragGroup(newGroup);
-                                    },
-                                  );
-                                });
-                              },
+                              onLongPressStart:
+                                  system != 'Web' ? showContextMenu : null,
+                              onSecondaryTapDown:
+                                  system == 'Web' ? showContextMenu : null,
                               child: Stack(
                                 children: [
                                   kIsWeb
@@ -330,6 +302,48 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void showContextMenu(event) {
+    var point = Point<double>(event.globalPosition.dx, event.globalPosition.dy);
+    checkTapOnTarget(point, callBack: (target) {
+      removeDragCallback();
+      HapticFeedback.vibrate();
+      targetMesh = target;
+      targetGroup = targetMesh.parent!;
+      var geometry = targetGroup.geometry;
+      var params = geometry?.parameters;
+      var paramsList = <double>[
+        params?['width'],
+        params?['depth'],
+        params?['height']
+      ];
+      var controllers = [
+        ...paramsList.map((e) => TextEditingController(text: '${1000 * e}')),
+      ];
+
+      var items = {
+        'Ширина(мм)': controllers[0],
+        'Длина(мм)': controllers[1],
+        'Высота(мм)': controllers[2],
+      };
+
+      contextMenu.showObjectInfo(
+        origin: point,
+        items: items,
+        callback: (items) {
+          var newGroup = Model3D.fromGroup(targetGroup)
+              .clone(
+                width: double.parse(items[0]) / 1000,
+                length: double.parse(items[1]) / 1000,
+                height: double.parse(items[2]) / 1000,
+              )
+              .getObject3D();
+          removeDragGroup(targetGroup);
+          addDragGroup(newGroup);
+        },
+      );
+    });
+  }
+
   render() {
     final gl = three3dRender.gl;
 
@@ -405,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void initPage() {
     three.Cache.enabled = true;
-    final aspectRatio = width / height;
+    final aspect = width / height;
 
     var fogColor = three.Color.setRGB255(230, 255, 255);
 
@@ -414,7 +428,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ..background = fogColor
       ..fog = three.Fog(fogColor, 20, 70);
 
-    camera = three.PerspectiveCamera(45, aspectRatio, 0.1, 1000)
+    camera = three.PerspectiveCamera(45, aspect, 0.1, 1000)
       ..position.set(45, 30, 60)
       ..lookAt(scene.position);
 
@@ -566,6 +580,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     draggableMeshes = draggableGroups.map((e) => e.children[0]).toList();
     boundaryObjects = [...draggableMeshes, ...truckContainer.sides];
+
+    renderer!.domElement.addEventListener('contextmenu', (event) => event.preventDefault());
 
     orbitControls.domElement
       ..addEventListener(
